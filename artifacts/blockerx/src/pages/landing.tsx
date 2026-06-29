@@ -4,7 +4,8 @@ import { motion } from "framer-motion";
 
 export default function LandingPage() {
   const handleDiscordLogin = () => {
-    window.location.href = "/api/auth/discord";
+    const apiBase = import.meta.env.VITE_API_URL || "";
+    window.location.href = `${apiBase}/api/auth/discord`;
   };
 
   return (
