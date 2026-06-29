@@ -1,0 +1,254 @@
+import { useState } from "react";
+import { useParams, useLocation } from "wouter";
+import { useGetBot, useListFiles, useGetBotLogs, useListEnvVars, useSetEnvVar, useDeleteEnvVar, useReadFile, useWriteFile, useDeployBot, useListDeployments, useStartBot, useStopBot, useRestartBot, getGetBotQueryKey, getListFilesQueryKey, getGetBotLogsQueryKey, getListEnvVarsQueryKey } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
+import { Play, Square, RotateCcw, Rocket, Plus, Trash2, Save, Folder, FileText, ChevronLeft } from "lucide-react";
+import { Link } from "wouter";
+
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, string> = {
+    running: "bg-green-500/15 text-green-400 border-green-500/20",
+    stopped: "bg-gray-500/15 text-gray-400 border-gray-500/20",
+    errored: "bg-red-500/15 text-red-400 border-red-500/20",
+    deploying: "bg-blue-500/15 text-blue-400 border-blue-500/20",
+    starting: "bg-yellow-500/15 text-yellow-400 border-yellow-500/20",
+  };
+  return <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${map[status] || map.stopped}`}>{status}</span>;
+}
+
+function LogLevelBadge({ level }: { level: string }) {
+  const map: Record<string, string> = { error: "text-red-400", warn: "text-yellow-400", info: "text-blue-400", debug: "text-gray-400" };
+  return <span className={`font-mono text-xs ${map[level] || "text-gray-400"}`}>[{level}]</span>;
+}
+
+export default function BotDetailPage() {
+  const { botId } = useParams<{ botId: string }>();
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  const { data: bot, isLoading } = useGetBot(botId, { query: { queryKey: getGetBotQueryKey(botId) } });
+  const { data: files } = useListFiles(botId, {}, { query: { queryKey: getListFilesQueryKey(botId) } });
+  const { data: logs } = useGetBotLogs(botId, {}, { query: { queryKey: getGetBotLogsQueryKey(botId), refetchInterval: 5000 } });
+  const { data: envVars } = useListEnvVars(botId, { query: { queryKey: getListEnvVarsQueryKey(botId) } });
+  const { data: deployments } = useListDeployments();
+
+  const startBot = useStartBot();
+  const stopBot = useStopBot();
+  const restartBot = useRestartBot();
+  const deployBot = useDeployBot();
+  const setEnvVar = useSetEnvVar();
+  const deleteEnvVar = useDeleteEnvVar();
+  const writeFile = useWriteFile();
+
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [fileContent, setFileContent] = useState("");
+  const [newEnvKey, setNewEnvKey] = useState("");
+  const [newEnvVal, setNewEnvVal] = useState("");
+
+  const { data: fileData } = useReadFile(botId, { filePath: selectedFile! }, {
+    query: { enabled: !!selectedFile, queryKey: ["readFile", botId, selectedFile] }
+  });
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: getGetBotQueryKey(botId) });
+    qc.invalidateQueries({ queryKey: getGetBotLogsQueryKey(botId) });
+  };
+
+  const botDeployments = (deployments as any[])?.filter((d: any) => d.botId === botId) || [];
+
+  const handleAction = (action: "start" | "stop" | "restart") => {
+    const fns = { start: startBot, stop: stopBot, restart: restartBot };
+    (fns[action] as any).mutate({ botId }, {
+      onSuccess: () => { refresh(); toast({ title: `Bot ${action}ed` }); },
+      onError: () => toast({ title: `Failed to ${action}`, variant: "destructive" }),
+    });
+  };
+
+  const handleDeploy = () => {
+    deployBot.mutate({ botId }, {
+      onSuccess: () => { refresh(); toast({ title: "Deployment started" }); },
+      onError: () => toast({ title: "Deploy failed", variant: "destructive" }),
+    });
+  };
+
+  const handleSaveFile = () => {
+    if (!selectedFile) return;
+    writeFile.mutate({ botId, data: { path: selectedFile, content: fileContent } }, {
+      onSuccess: () => toast({ title: "File saved" }),
+      onError: () => toast({ title: "Save failed", variant: "destructive" }),
+    });
+  };
+
+  const handleAddEnv = () => {
+    if (!newEnvKey) return;
+    setEnvVar.mutate({ botId, data: { key: newEnvKey, value: newEnvVal } }, {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getListEnvVarsQueryKey(botId) });
+        setNewEnvKey(""); setNewEnvVal("");
+        toast({ title: "Variable saved" });
+      },
+      onError: () => toast({ title: "Failed to save", variant: "destructive" }),
+    });
+  };
+
+  if (isLoading) return <div className="space-y-4"><Skeleton className="h-12 w-64" /><Skeleton className="h-64 w-full" /></div>;
+  if (!bot) return <div className="text-muted-foreground">Bot not found.</div>;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-4">
+        <Link href="/bots">
+          <Button variant="ghost" size="sm" className="gap-2">
+            <ChevronLeft className="w-4 h-4" /> Bots
+          </Button>
+        </Link>
+        <div className="flex-1">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold">{(bot as any).name}</h1>
+            <StatusBadge status={(bot as any).status} />
+            <span className="text-sm text-muted-foreground">{(bot as any).language === "python" ? "Python" : "JavaScript"}</span>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          {(bot as any).status !== "running" && <Button size="sm" onClick={() => handleAction("start")}><Play className="w-3 h-3 mr-1" />Start</Button>}
+          {(bot as any).status === "running" && <Button size="sm" variant="outline" onClick={() => handleAction("stop")}><Square className="w-3 h-3 mr-1" />Stop</Button>}
+          <Button size="sm" variant="outline" onClick={() => handleAction("restart")}><RotateCcw className="w-3 h-3 mr-1" />Restart</Button>
+          <Button size="sm" onClick={handleDeploy} disabled={deployBot.isPending}><Rocket className="w-3 h-3 mr-1" />Deploy</Button>
+        </div>
+      </div>
+
+      <Tabs defaultValue="files">
+        <TabsList className="bg-card/60 border border-border/40">
+          <TabsTrigger value="files">Files</TabsTrigger>
+          <TabsTrigger value="env">Environment</TabsTrigger>
+          <TabsTrigger value="logs">Logs</TabsTrigger>
+          <TabsTrigger value="deployments">Deployments</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="files" className="mt-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="bg-card/60 border-border/40">
+              <CardHeader className="pb-2"><CardTitle className="text-sm">File Explorer</CardTitle></CardHeader>
+              <CardContent className="p-0">
+                <div className="min-h-48 divide-y divide-border/30">
+                  {(!files || (files as any[]).length === 0) && (
+                    <p className="text-xs text-muted-foreground p-4 text-center">No files yet. Deploy your bot to upload files.</p>
+                  )}
+                  {(files as any[])?.map((f: any) => (
+                    <button key={f.path} onClick={() => { setSelectedFile(f.path); setFileContent(fileData?.content || ""); }}
+                      className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-accent/30 transition-colors text-left ${selectedFile === f.path ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}>
+                      {f.type === "directory" ? <Folder className="w-3.5 h-3.5 shrink-0" /> : <FileText className="w-3.5 h-3.5 shrink-0" />}
+                      <span className="truncate">{f.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="md:col-span-2 bg-card/60 border-border/40">
+              <CardHeader className="pb-2 flex-row items-center justify-between">
+                <CardTitle className="text-sm">{selectedFile ? selectedFile.split("/").pop() : "Select a file"}</CardTitle>
+                {selectedFile && <Button size="sm" onClick={handleSaveFile} disabled={writeFile.isPending}><Save className="w-3 h-3 mr-1" />Save</Button>}
+              </CardHeader>
+              <CardContent>
+                {selectedFile ? (
+                  <textarea
+                    value={fileData?.content || fileContent}
+                    onChange={e => setFileContent(e.target.value)}
+                    className="w-full h-80 font-mono text-sm bg-background/50 border border-border/40 rounded-md p-3 resize-none focus:outline-none focus:border-primary/40"
+                    spellCheck={false}
+                    data-testid="textarea-file-editor"
+                  />
+                ) : (
+                  <div className="h-80 flex items-center justify-center text-muted-foreground text-sm">
+                    Select a file to edit
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="env" className="mt-4">
+          <Card className="bg-card/60 border-border/40">
+            <CardHeader><CardTitle className="text-sm">Environment Variables</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                <Input value={newEnvKey} onChange={e => setNewEnvKey(e.target.value)} placeholder="KEY" className="font-mono text-sm" data-testid="input-env-key" />
+                <Input value={newEnvVal} onChange={e => setNewEnvVal(e.target.value)} placeholder="VALUE" type="password" className="font-mono text-sm" data-testid="input-env-value" />
+                <Button onClick={handleAddEnv} disabled={!newEnvKey} data-testid="button-add-env"><Plus className="w-4 h-4" /></Button>
+              </div>
+              <div className="divide-y divide-border/30 rounded-md border border-border/40 overflow-hidden">
+                {(!envVars || (envVars as any[]).length === 0) && (
+                  <p className="text-sm text-muted-foreground p-4 text-center">No environment variables set.</p>
+                )}
+                {(envVars as any[])?.map((v: any) => (
+                  <div key={v.id} className="flex items-center justify-between px-4 py-2.5" data-testid={`row-env-${v.id}`}>
+                    <div className="flex items-center gap-4">
+                      <span className="font-mono text-sm font-medium">{v.key}</span>
+                      <span className="font-mono text-xs text-muted-foreground">{"•".repeat(8)}</span>
+                    </div>
+                    <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10 h-7 w-7 p-0"
+                      onClick={() => deleteEnvVar.mutate({ botId, varId: v.id }, { onSuccess: () => qc.invalidateQueries({ queryKey: getListEnvVarsQueryKey(botId) }) })}>
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="logs" className="mt-4">
+          <Card className="bg-card/60 border-border/40">
+            <CardHeader><CardTitle className="text-sm font-medium">Console Output</CardTitle></CardHeader>
+            <CardContent>
+              <div className="h-96 overflow-y-auto font-mono text-xs space-y-1 bg-background/40 rounded-md p-4 border border-border/30">
+                {(!logs || (logs as any[]).length === 0) && (
+                  <p className="text-muted-foreground text-center py-8">No logs yet. Start your bot to see output.</p>
+                )}
+                {(logs as any[])?.map((l: any) => (
+                  <div key={l.id} className="flex items-start gap-3">
+                    <span className="text-muted-foreground shrink-0 text-[10px] pt-0.5">{new Date(l.timestamp).toLocaleTimeString()}</span>
+                    <LogLevelBadge level={l.level} />
+                    <span className="text-foreground/80 break-all">{l.message}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="deployments" className="mt-4">
+          <Card className="bg-card/60 border-border/40">
+            <CardHeader><CardTitle className="text-sm">Deployment History</CardTitle></CardHeader>
+            <CardContent>
+              <div className="divide-y divide-border/30">
+                {botDeployments.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No deployments yet.</p>}
+                {botDeployments.map((d: any) => (
+                  <div key={d.id} className="py-3 flex items-center justify-between" data-testid={`row-deploy-${d.id}`}>
+                    <div>
+                      <p className="text-sm font-medium">{new Date(d.startedAt).toLocaleString()}</p>
+                      {d.errorMessage && <p className="text-xs text-destructive mt-0.5">{d.errorMessage}</p>}
+                    </div>
+                    <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                      d.status === "success" ? "bg-green-500/15 text-green-400 border-green-500/20" :
+                      d.status === "failed" ? "bg-red-500/15 text-red-400 border-red-500/20" :
+                      "bg-blue-500/15 text-blue-400 border-blue-500/20"
+                    }`}>{d.status}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
