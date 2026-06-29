@@ -12,16 +12,10 @@ app.use(
     logger,
     serializers: {
       req(req) {
-        return {
-          id: req.id,
-          method: req.method,
-          url: req.url?.split("?")[0],
-        };
+        return { id: req.id, method: req.method, url: req.url?.split("?")[0] };
       },
       res(res) {
-        return {
-          statusCode: res.statusCode,
-        };
+        return { statusCode: res.statusCode };
       },
     },
   }),
@@ -30,19 +24,19 @@ app.use(
 const allowedOrigins = [
   ...(process.env.REPLIT_DOMAINS?.split(",").map((d) => `https://${d.trim()}`) || []),
   ...(process.env.REPLIT_DEV_DOMAIN ? [`https://${process.env.REPLIT_DEV_DOMAIN}`] : []),
+  ...(process.env.RENDER_APP_URL ? [process.env.RENDER_APP_URL] : []),
   "http://localhost:3000",
   "http://localhost:5173",
   "http://localhost:80",
+  "http://localhost:25673",
 ];
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.some((o) => origin.startsWith(o))) {
-        callback(null, true);
-      } else {
-        callback(null, true);
-      }
+      if (!origin) { callback(null, true); return; }
+      const allowed = allowedOrigins.some((o) => origin.startsWith(o));
+      callback(null, allowed || process.env.NODE_ENV === "development");
     },
     credentials: true,
   }),

@@ -3,7 +3,8 @@ import { db, deploymentsTable, botsTable, botLogsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, requireInvite } from "../lib/auth-middleware";
-import { createNotification } from "../lib/notifications";
+import { notifyUser } from "../lib/notifications";
+import { startBot, stopBot } from "../lib/process-manager";
 
 const router = Router();
 
@@ -33,7 +34,8 @@ router.get("/deployments", requireAuth, requireInvite, async (req, res): Promise
 router.post("/bots/:botId/deploy", requireAuth, requireInvite, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const botId = Array.isArray(req.params.botId) ? req.params.botId[0] : req.params.botId;
-  const [bot] = await db.select().from(botsTable).where(and(eq(botsTable.id, botId), eq(botsTable.userId, user.id)));
+  const [bot] = await db.select().from(botsTable)
+    .where(and(eq(botsTable.id, botId), eq(botsTable.userId, user.id)));
   if (!bot) { res.status(404).json({ error: "Bot not found" }); return; }
 
   const deployId = randomUUID();
@@ -47,17 +49,53 @@ router.post("/bots/:botId/deploy", requireAuth, requireInvite, async (req, res):
 
   await db.update(botsTable).set({ status: "deploying" }).where(eq(botsTable.id, botId));
 
-  setTimeout(async () => {
-    const logMsg = `[Deploy] Loading files from R2: ${bot.r2Prefix}\n[Deploy] Installing dependencies...\n[Deploy] Starting ${bot.language === "python" ? "Python" : "Node.js"} runtime...\n[Deploy] Bot deployed successfully.`;
-    await db.update(deploymentsTable).set({
-      status: "success",
-      finishedAt: new Date(),
-      logs: logMsg,
-    }).where(eq(deploymentsTable.id, deployId));
-    await db.update(botsTable).set({ status: "running" }).where(eq(botsTable.id, botId));
-    await db.insert(botLogsTable).values({ id: randomUUID(), botId, level: "info", message: "Deployment successful — bot is online" });
-    await createNotification({ userId: user.id, title: "Deployment Successful", message: `${bot.name} deployed successfully`, type: "success" });
-  }, 4000);
+  setImmediate(async () => {
+    try {
+      try { await stopBot(botId); } catch (_) {}
+
+      const logLines: string[] = [];
+      logLines.push(`[Deploy] Starting deployment for "${bot.name}"`);
+      logLines.push(`[Deploy] Language: ${bot.language === "python" ? "Python (discord.py)" : "JavaScript (discord.js)"}`);
+      logLines.push(`[Deploy] R2 prefix: ${bot.r2Prefix}`);
+      logLines.push(`[Deploy] Launching bot process...`);
+
+      await startBot({ ...bot, userId: user.id });
+
+      logLines.push(`[Deploy] Bot process started successfully.`);
+      logLines.push(`[Deploy] Deployment complete.`);
+
+      await db.update(deploymentsTable).set({
+        status: "success",
+        finishedAt: new Date(),
+        logs: logLines.join("\n"),
+      }).where(eq(deploymentsTable.id, deployId));
+
+      await notifyUser({
+        userId: user.id,
+        discordId: user.discordId,
+        title: "Deployment Successful",
+        message: `"${bot.name}" deployed and is now running.`,
+        type: "success",
+      });
+    } catch (err: any) {
+      await db.update(deploymentsTable).set({
+        status: "failed",
+        finishedAt: new Date(),
+        errorMessage: err.message || "Deployment failed",
+        logs: `[Deploy] Error: ${err.message}`,
+      }).where(eq(deploymentsTable.id, deployId));
+
+      await db.update(botsTable).set({ status: "errored" }).where(eq(botsTable.id, botId));
+
+      await notifyUser({
+        userId: user.id,
+        discordId: user.discordId,
+        title: "Deployment Failed",
+        message: `"${bot.name}" deployment failed: ${err.message}`,
+        type: "error",
+      });
+    }
+  });
 
   req.log.info({ deployId, botId }, "Deployment started");
   res.json(formatDeployment(deployment));
@@ -65,7 +103,9 @@ router.post("/bots/:botId/deploy", requireAuth, requireInvite, async (req, res):
 
 router.get("/deployments/:deploymentId", requireAuth, requireInvite, async (req, res): Promise<void> => {
   const user = (req as any).user;
-  const deploymentId = Array.isArray(req.params.deploymentId) ? req.params.deploymentId[0] : req.params.deploymentId;
+  const deploymentId = Array.isArray(req.params.deploymentId)
+    ? req.params.deploymentId[0]
+    : req.params.deploymentId;
   const [deployment] = await db.select().from(deploymentsTable)
     .where(and(eq(deploymentsTable.id, deploymentId), eq(deploymentsTable.userId, user.id)));
   if (!deployment) { res.status(404).json({ error: "Deployment not found" }); return; }
