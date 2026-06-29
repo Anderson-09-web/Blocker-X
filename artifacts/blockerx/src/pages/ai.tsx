@@ -39,9 +39,9 @@ export default function AiPage() {
         qc.invalidateQueries({ queryKey: ["getAIUsage"] });
       },
       onError: (err: any) => {
-        const msg = err?.response?.data?.error || "Failed to get AI response";
+        const msg = err?.data?.error || err?.message || "Failed to get AI response";
+        setMessages(prev => [...prev, { role: "assistant", content: `❌ ${msg}` }]);
         toast({ title: msg, variant: "destructive" });
-        setMessages(prev => prev.slice(0, -1));
       },
     });
   };

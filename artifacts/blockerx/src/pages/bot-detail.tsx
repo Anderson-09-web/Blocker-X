@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useGetBot, useListFiles, useGetBotLogs, useListEnvVars, useSetEnvVar, useDeleteEnvVar, useReadFile, useWriteFile, useDeployBot, useListDeployments, useStartBot, useStopBot, useRestartBot, getGetBotQueryKey, getListFilesQueryKey, getGetBotLogsQueryKey, getListEnvVarsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -55,6 +55,10 @@ export default function BotDetailPage() {
   const { data: fileData } = useReadFile(botId, { filePath: selectedFile! }, {
     query: { enabled: !!selectedFile, queryKey: ["readFile", botId, selectedFile] }
   });
+
+  useEffect(() => {
+    if (fileData?.content !== undefined) setFileContent(fileData.content);
+  }, [fileData]);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: getGetBotQueryKey(botId) });
@@ -142,7 +146,7 @@ export default function BotDetailPage() {
                     <p className="text-xs text-muted-foreground p-4 text-center">No files yet. Deploy your bot to upload files.</p>
                   )}
                   {(files as any[])?.map((f: any) => (
-                    <button key={f.path} onClick={() => { setSelectedFile(f.path); setFileContent(fileData?.content || ""); }}
+                    <button key={f.path} onClick={() => { setSelectedFile(f.path); setFileContent(""); }}
                       className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-accent/30 transition-colors text-left ${selectedFile === f.path ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}>
                       {f.type === "directory" ? <Folder className="w-3.5 h-3.5 shrink-0" /> : <FileText className="w-3.5 h-3.5 shrink-0" />}
                       <span className="truncate">{f.name}</span>
@@ -159,7 +163,7 @@ export default function BotDetailPage() {
               <CardContent>
                 {selectedFile ? (
                   <textarea
-                    value={fileData?.content || fileContent}
+                    value={fileContent}
                     onChange={e => setFileContent(e.target.value)}
                     className="w-full h-80 font-mono text-sm bg-background/50 border border-border/40 rounded-md p-3 resize-none focus:outline-none focus:border-primary/40"
                     spellCheck={false}
