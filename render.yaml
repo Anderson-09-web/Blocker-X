@@ -35,13 +35,17 @@ services:
         sync: false
       - key: RENDER_APP_URL
         sync: false
+      - key: RENDER_API_URL
+        sync: false
 
   - type: web
     name: blockerx-frontend
-    runtime: node
-    plan: starter
-    buildCommand: pnpm install && pnpm --filter @workspace/blockerx run build
-    staticPublishPath: artifacts/blockerx/dist
+    runtime: static
+    buildCommand: BASE_PATH=/ pnpm install && BASE_PATH=/ pnpm --filter @workspace/blockerx run build
+    staticPublishPath: artifacts/blockerx/dist/public
+    envVars:
+      - key: VITE_API_URL
+        sync: false
     headers:
       - path: /*
         name: Cache-Control
