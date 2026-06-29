@@ -10,7 +10,7 @@ export function createSessionMiddleware() {
   return session({
     store: new PgSession({
       pool,
-      tableName: "sessions",
+      tableName: "pg_sessions",
       createTableIfMissing: true,
     }),
     secret: process.env.SESSION_SECRET || "blockerx-secret-key-change-in-prod",
