@@ -213,13 +213,20 @@ async function spawnBotProcess(
         }
       }
 
-      // Install all dependencies
-      const result = runInstallSync("pip3", ["install", "-r", "requirements.txt", "--quiet", "--exists-action", "i"], workDir);
+      // Install all dependencies using python3 -m pip (most reliable cross-platform)
+      await addLog(botId, "info", `[System] Running: python3 -m pip install -r requirements.txt`);
+      const result = runInstallSync("python3", ["-m", "pip", "install", "-r", "requirements.txt", "--quiet", "--exists-action", "i"], workDir);
       if (!result.success) {
-        await addLog(botId, "warn", `[System] Dependency install warning: ${result.output.slice(0, 300)}`);
-      } else {
-        await addLog(botId, "info", "[System] Python dependencies installed successfully.");
+        // Fallback: try pip3 directly
+        const result2 = runInstallSync("pip3", ["install", "-r", "requirements.txt", "--quiet", "--exists-action", "i"], workDir);
+        if (!result2.success) {
+          const errMsg = result2.output.slice(0, 400);
+          await addLog(botId, "error", `[System] FATAL: Could not install Python dependencies: ${errMsg}`);
+          await db.update(botsTable).set({ status: "errored" }).where(eq(botsTable.id, botId));
+          return;
+        }
       }
+      await addLog(botId, "info", "[System] Python dependencies installed successfully.");
       cmd = "python3";
       args = ["-u", mainFile];
     } else {
@@ -273,17 +280,32 @@ async function spawnBotProcess(
       const current = processes.get(botId);
       if (current?.child !== child) return;
 
+      processes.delete(botId);
+
       if (current.isStopping) {
         await db.update(botsTable).set({ status: "stopped" }).where(eq(botsTable.id, botId));
         await addLog(botId, "info", "[System] Bot stopped gracefully.");
-        processes.delete(botId);
         return;
       }
 
+      // Non-zero exit = crash/error → stop completely, don't restart
+      if (code !== 0 && code !== null) {
+        await db.update(botsTable).set({ status: "errored" }).where(eq(botsTable.id, botId));
+        await addLog(botId, "error", `[System] Bot crashed (exit code ${code}). Stopped. Fix the error and restart manually.`);
+        return;
+      }
+
+      // Exit code 0 = clean exit → just mark as stopped
+      if (code === 0) {
+        await db.update(botsTable).set({ status: "stopped" }).where(eq(botsTable.id, botId));
+        await addLog(botId, "info", "[System] Bot exited cleanly.");
+        return;
+      }
+
+      // Killed by signal (not by us) → restart once
       const exitInfo = signal ? `signal ${signal}` : `code ${code}`;
-      await addLog(botId, "error", `[System] Bot exited (${exitInfo}). Restarting in 5s...`);
+      await addLog(botId, "warn", `[System] Bot terminated by ${exitInfo}. Restarting in 5s...`);
       await db.update(botsTable).set({ status: "starting" }).where(eq(botsTable.id, botId));
-      processes.delete(botId);
 
       setTimeout(async () => {
         const [freshBot] = await db.select().from(botsTable).where(eq(botsTable.id, botId));
