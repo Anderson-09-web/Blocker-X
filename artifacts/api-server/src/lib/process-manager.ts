@@ -156,9 +156,59 @@ async function spawnBotProcess(
 
     if (bot.language === "python") {
       await addLog(botId, "info", "[System] Installing Python dependencies...");
+
+      const reqPath = path.join(workDir, "requirements.txt");
+      const { existsSync, readFileSync } = await import("fs");
+
+      if (!existsSync(reqPath)) {
+        // Auto-detect imports from main.py and map to pip packages
+        const IMPORT_TO_PKG: Record<string, string> = {
+          discord: "discord.py",
+          nextcord: "nextcord",
+          disnake: "disnake",
+          interactions: "discord-py-interactions",
+          hikari: "hikari",
+          lightbulb: "hikari-lightbulb",
+          aiohttp: "aiohttp",
+          requests: "requests",
+          flask: "flask",
+          fastapi: "fastapi",
+          dotenv: "python-dotenv",
+          pymongo: "pymongo",
+          motor: "motor",
+          sqlalchemy: "SQLAlchemy",
+          psycopg2: "psycopg2-binary",
+          redis: "redis",
+          PIL: "Pillow",
+          cv2: "opencv-python",
+          numpy: "numpy",
+          pandas: "pandas",
+        };
+
+        let mainContent = "";
+        const mainPath = path.join(workDir, mainFile);
+        if (existsSync(mainPath)) {
+          mainContent = readFileSync(mainPath, "utf-8");
+        }
+
+        const detected = new Set<string>();
+        for (const [imp, pkg] of Object.entries(IMPORT_TO_PKG)) {
+          if (new RegExp(`(^|\\n)\\s*(import ${imp}|from ${imp})`, "m").test(mainContent)) {
+            detected.add(pkg);
+          }
+        }
+
+        // Always include discord.py for Python bots as fallback
+        if (detected.size === 0) detected.add("discord.py");
+
+        const reqContent = Array.from(detected).join("\n") + "\n";
+        await writeFile(reqPath, reqContent);
+        await addLog(botId, "info", `[System] Auto-created requirements.txt with: ${Array.from(detected).join(", ")}`);
+      }
+
       const result = runInstallSync("pip3", ["install", "-r", "requirements.txt", "-q", "--exists-action", "i"], workDir);
       if (!result.success) {
-        await addLog(botId, "warn", `[System] Dependency note: ${result.output.slice(0, 200)}`);
+        await addLog(botId, "warn", `[System] Dependency install warning: ${result.output.slice(0, 300)}`);
       } else {
         await addLog(botId, "info", "[System] Python dependencies installed.");
       }
