@@ -157,60 +157,68 @@ async function spawnBotProcess(
     if (bot.language === "python") {
       await addLog(botId, "info", "[System] Installing Python dependencies...");
 
-      const reqPath = path.join(workDir, "requirements.txt");
       const { existsSync, readFileSync } = await import("fs");
 
-      if (!existsSync(reqPath)) {
-        // Auto-detect imports from main.py and map to pip packages
-        const IMPORT_TO_PKG: Record<string, string> = {
-          discord: "discord.py",
-          nextcord: "nextcord",
-          disnake: "disnake",
-          interactions: "discord-py-interactions",
-          hikari: "hikari",
-          lightbulb: "hikari-lightbulb",
-          aiohttp: "aiohttp",
-          requests: "requests",
-          flask: "flask",
-          fastapi: "fastapi",
-          dotenv: "python-dotenv",
-          pymongo: "pymongo",
-          motor: "motor",
-          sqlalchemy: "SQLAlchemy",
-          psycopg2: "psycopg2-binary",
-          redis: "redis",
-          PIL: "Pillow",
-          cv2: "opencv-python",
-          numpy: "numpy",
-          pandas: "pandas",
-        };
+      const IMPORT_TO_PKG: Record<string, string> = {
+        discord: "discord.py",
+        nextcord: "nextcord",
+        disnake: "disnake",
+        interactions: "discord-py-interactions",
+        hikari: "hikari",
+        lightbulb: "hikari-lightbulb",
+        aiohttp: "aiohttp",
+        requests: "requests",
+        flask: "flask",
+        fastapi: "fastapi",
+        dotenv: "python-dotenv",
+        pymongo: "pymongo",
+        motor: "motor",
+        sqlalchemy: "SQLAlchemy",
+        psycopg2: "psycopg2-binary",
+        redis: "redis",
+        PIL: "Pillow",
+        cv2: "opencv-python",
+        numpy: "numpy",
+        pandas: "pandas",
+      };
 
-        let mainContent = "";
-        const mainPath = path.join(workDir, mainFile);
-        if (existsSync(mainPath)) {
-          mainContent = readFileSync(mainPath, "utf-8");
-        }
-
-        const detected = new Set<string>();
-        for (const [imp, pkg] of Object.entries(IMPORT_TO_PKG)) {
-          if (new RegExp(`(^|\\n)\\s*(import ${imp}|from ${imp})`, "m").test(mainContent)) {
-            detected.add(pkg);
-          }
-        }
-
-        // Always include discord.py for Python bots as fallback
-        if (detected.size === 0) detected.add("discord.py");
-
-        const reqContent = Array.from(detected).join("\n") + "\n";
-        await writeFile(reqPath, reqContent);
-        await addLog(botId, "info", `[System] Auto-created requirements.txt with: ${Array.from(detected).join(", ")}`);
+      // Read main file to detect imports
+      const mainPath = path.join(workDir, mainFile);
+      let mainContent = "";
+      if (existsSync(mainPath)) {
+        mainContent = readFileSync(mainPath, "utf-8");
       }
 
-      const result = runInstallSync("pip3", ["install", "-r", "requirements.txt", "-q", "--exists-action", "i"], workDir);
+      const detected = new Set<string>(["discord.py"]);
+      for (const [imp, pkg] of Object.entries(IMPORT_TO_PKG)) {
+        if (new RegExp(`(^|\\n)\\s*(import ${imp}|from ${imp})`, "m").test(mainContent)) {
+          detected.add(pkg);
+        }
+      }
+
+      // Also install from requirements.txt if it exists
+      const reqPath = path.join(workDir, "requirements.txt");
+      if (!existsSync(reqPath)) {
+        await writeFile(reqPath, Array.from(detected).join("\n") + "\n");
+        await addLog(botId, "info", `[System] Auto-created requirements.txt: ${Array.from(detected).join(", ")}`);
+      } else {
+        // Merge detected packages into existing requirements.txt
+        const existing = readFileSync(reqPath, "utf-8");
+        const missing = Array.from(detected).filter(pkg =>
+          !existing.toLowerCase().includes(pkg.toLowerCase().split(/[>=<]/)[0])
+        );
+        if (missing.length > 0) {
+          await writeFile(reqPath, existing.trimEnd() + "\n" + missing.join("\n") + "\n");
+          await addLog(botId, "info", `[System] Added to requirements.txt: ${missing.join(", ")}`);
+        }
+      }
+
+      // Install all dependencies
+      const result = runInstallSync("pip3", ["install", "-r", "requirements.txt", "--quiet", "--exists-action", "i"], workDir);
       if (!result.success) {
         await addLog(botId, "warn", `[System] Dependency install warning: ${result.output.slice(0, 300)}`);
       } else {
-        await addLog(botId, "info", "[System] Python dependencies installed.");
+        await addLog(botId, "info", "[System] Python dependencies installed successfully.");
       }
       cmd = "python3";
       args = ["-u", mainFile];
