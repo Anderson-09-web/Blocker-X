@@ -51,7 +51,7 @@ export default function AdminBroadcastPage() {
           </div>
           <div>
             <Label>Type</Label>
-            <Select value={form.type} onValueChange={v => setForm(f=>({...f, type: v}))}>
+            <Select value={form.type} onValueChange={v => { const val = v; setTimeout(() => setForm(f=>({...f, type: val})), 0); }}>
               <SelectTrigger className="mt-1" data-testid="select-broadcast-type">
                 <SelectValue />
               </SelectTrigger>

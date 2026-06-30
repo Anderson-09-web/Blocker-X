@@ -242,7 +242,7 @@ export default function AiPage() {
 
         <div key="lenguaje" className="space-y-1">
           <label className="text-xs text-muted-foreground">Lenguaje</label>
-          <Select value={language} onValueChange={setLanguage}>
+          <Select value={language} onValueChange={(v) => startTransition(() => setLanguage(v))}>
             <SelectTrigger className="bg-card/60 border-border/40 text-sm h-9">
               <SelectValue />
             </SelectTrigger>

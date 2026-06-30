@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { resetStaleProcesses } from "./lib/process-manager";
+import { pool } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
 
@@ -14,7 +15,39 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
+async function runStartupMigrations() {
+  const client = await pool.connect();
+  try {
+    // Create any tables that drizzle-kit push may have skipped due to TTY constraints.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS bot_shares (
+        id TEXT PRIMARY KEY,
+        bot_id TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        collaborator_id TEXT NOT NULL,
+        can_edit_files BOOLEAN NOT NULL DEFAULT TRUE,
+        can_view_logs BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    // Index for fast lookup by collaborator
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS bot_shares_collaborator_idx
+        ON bot_shares (collaborator_id)
+    `);
+    logger.info("Startup migrations applied");
+  } finally {
+    client.release();
+  }
+}
+
 async function main() {
+  try {
+    await runStartupMigrations();
+  } catch (err) {
+    logger.warn({ err }, "Startup migrations failed — continuing anyway.");
+  }
+
   try {
     await resetStaleProcesses();
   } catch (err) {

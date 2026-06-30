@@ -5,16 +5,38 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: string }> {
+/** Returns true if the error is a benign DOM portal-cleanup race (Radix UI + React 18). */
+function isDomCleanupError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)) ?? "";
+  return (
+    msg.includes("removeChild") ||
+    msg.includes("El nodo que se va a eliminar") ||
+    msg.includes("The node to be removed is not a child") ||
+    msg.includes("insertBefore") ||
+    (err instanceof DOMException && err.name === "NotFoundError")
+  );
+}
+
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: string }
+> {
   constructor(props: any) {
     super(props);
     this.state = { hasError: false, error: "" };
   }
   static getDerivedStateFromError(err: Error) {
+    // DOM portal-cleanup race conditions are benign — recover silently.
+    if (isDomCleanupError(err)) return { hasError: false, error: "" };
     return { hasError: true, error: err?.message || "Unknown error" };
   }
-  componentDidCatch(err: Error) {
-    console.error("ErrorBoundary caught:", err);
+  componentDidCatch(err: Error, info: React.ErrorInfo) {
+    if (isDomCleanupError(err)) {
+      // Reset immediately so children re-render normally.
+      this.setState({ hasError: false, error: "" });
+      return;
+    }
+    console.error("ErrorBoundary caught:", err, info);
   }
   render() {
     if (this.state.hasError) {
