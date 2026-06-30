@@ -1,4 +1,6 @@
 - [Neon DB connection](neon-db.md) — use NEON_DATABASE_URL (not DATABASE_URL); SSL must be enabled for neon.tech hosts
+- [Python status injection](python-status-injection.md) — BOT_STATUS only works in template bots; custom bots need _bx_inject.py launcher approach
+- [AI agent path safety](ai-agent-path-safety.md) — /ai/agent must strictly validate filenames; safeName regex must reject ".." and "/" segments
 - [R2 storage pattern](r2-storage.md) — files stored in R2 only, never in DB; prefix = users/{discordId}/bots/{botId}
 - [Tailwind v4 dark class](tailwind-dark.md) — cannot @apply dark in CSS; must set .dark class on html via JS in main.tsx
 - [API codegen collision fix](api-codegen-collision.md) — lib/api-zod/src/index.ts excludes colliding Params types via explicit named exports
