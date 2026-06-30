@@ -29,6 +29,29 @@ function getBotId(req: any): string {
   return Array.isArray(req.params.botId) ? req.params.botId[0] : req.params.botId;
 }
 
+router.post("/bots/verify-token", requireAuth, async (req, res): Promise<void> => {
+  const { token } = req.body;
+  if (!token) { res.status(400).json({ error: "Token is required" }); return; }
+  try {
+    const response = await fetch("https://discord.com/api/v10/users/@me", {
+      headers: { Authorization: `Bot ${token.trim()}` },
+    });
+    if (!response.ok) {
+      res.status(400).json({ error: "Token inválido" });
+      return;
+    }
+    const data = await response.json() as { id: string; username: string; avatar: string | null };
+    res.json({
+      id: data.id,
+      username: data.username,
+      avatar: data.avatar ? `https://cdn.discordapp.com/avatars/${data.id}/${data.avatar}.png` : null,
+    });
+  } catch (err) {
+    req.log.warn({ err }, "Failed to verify Discord token");
+    res.status(500).json({ error: "No se pudo verificar el token" });
+  }
+});
+
 router.get("/bots", requireAuth, requireInvite, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const bots = await db.select().from(botsTable)

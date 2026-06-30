@@ -276,6 +276,8 @@ export interface AIChatInput {
   message: string;
   /** @nullable */
   botId?: string | null;
+  /** @nullable */
+  filePath?: string | null;
   language?: AIChatInputLanguage;
   /** @nullable */
   context?: string | null;

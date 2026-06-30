@@ -565,6 +565,7 @@ export const aiChatBodyLanguageDefault = `python`;
 export const AiChatBody = zod.object({
   "message": zod.string(),
   "botId": zod.string().nullish(),
+  "filePath": zod.string().nullish(),
   "language": zod.enum(['python', 'javascript']).default(aiChatBodyLanguageDefault),
   "context": zod.string().nullish()
 })

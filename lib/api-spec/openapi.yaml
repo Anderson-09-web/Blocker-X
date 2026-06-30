@@ -1458,6 +1458,8 @@ components:
           type: string
         botId:
           type: ["string", "null"]
+        filePath:
+          type: ["string", "null"]
         language:
           type: string
           enum: [python, javascript]

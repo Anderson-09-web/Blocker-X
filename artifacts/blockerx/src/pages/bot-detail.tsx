@@ -3,7 +3,7 @@ import { useParams } from "wouter";
 import {
   useGetBot, useListFiles, useGetBotLogs, useListEnvVars, useSetEnvVar, useDeleteEnvVar,
   useReadFile, useWriteFile, useDeployBot, useListDeployments, useStartBot, useStopBot,
-  useRestartBot, useUpdateBot,
+  useRestartBot, useUpdateBot, useUploadFile, useCreateFolder,
   getGetBotQueryKey, getListFilesQueryKey, getGetBotLogsQueryKey, getListEnvVarsQueryKey
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Square, RotateCcw, Rocket, Plus, Trash2, Save, Folder, FileText, ChevronLeft, Settings, BookOpen } from "lucide-react";
+import { Play, Square, RotateCcw, Rocket, Plus, Trash2, Save, Folder, FileText, ChevronLeft, Settings, BookOpen, FilePlus, FolderPlus, X } from "lucide-react";
 import { Link } from "wouter";
 
 function StatusBadge({ status }: { status: string }) {
@@ -143,11 +143,19 @@ export default function BotDetailPage() {
   const setEnvVar = useSetEnvVar();
   const deleteEnvVar = useDeleteEnvVar();
   const writeFile = useWriteFile();
+  const uploadFile = useUploadFile();
+  const createFolder = useCreateFolder();
 
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState("");
   const [newEnvKey, setNewEnvKey] = useState("");
   const [newEnvVal, setNewEnvVal] = useState("");
+
+  const [showNewFile, setShowNewFile] = useState(false);
+  const [newFileName, setNewFileName] = useState("");
+  const [newFileContent, setNewFileContent] = useState("");
+  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
 
   const [settingsName, setSettingsName] = useState("");
   const [settingsDesc, setSettingsDesc] = useState("");
@@ -206,6 +214,36 @@ export default function BotDetailPage() {
     writeFile.mutate({ botId, data: { path: selectedFile, content: fileContent } }, {
       onSuccess: () => toast({ title: "Archivo guardado" }),
       onError: () => toast({ title: "Error al guardar", variant: "destructive" }),
+    });
+  };
+
+  const handleCreateFile = () => {
+    if (!newFileName.trim()) return;
+    const name = newFileName.trim();
+    uploadFile.mutate({ botId, data: { path: "/", name, content: newFileContent, encoding: "utf-8" } }, {
+      onSuccess: (f: any) => {
+        qc.invalidateQueries({ queryKey: getListFilesQueryKey(botId) });
+        toast({ title: `Archivo "${name}" creado` });
+        setSelectedFile(f.path);
+        setFileContent(newFileContent);
+        setShowNewFile(false);
+        setNewFileName("");
+        setNewFileContent("");
+      },
+      onError: () => toast({ title: "Error al crear el archivo", variant: "destructive" }),
+    });
+  };
+
+  const handleCreateFolder = () => {
+    if (!newFolderName.trim()) return;
+    createFolder.mutate({ botId, data: { path: newFolderName.trim() } }, {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getListFilesQueryKey(botId) });
+        toast({ title: `Carpeta "${newFolderName}" creada` });
+        setShowNewFolder(false);
+        setNewFolderName("");
+      },
+      onError: () => toast({ title: "Error al crear la carpeta", variant: "destructive" }),
     });
   };
 
@@ -290,19 +328,106 @@ export default function BotDetailPage() {
         </TabsList>
 
         {/* Files */}
-        <TabsContent value="files" className="mt-4">
+        <TabsContent value="files" className="mt-4 space-y-3">
+          {/* New File Dialog */}
+          {showNewFile && (
+            <Card className="bg-card/60 border-primary/30 border">
+              <CardHeader className="pb-2 flex-row items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2"><FilePlus className="w-4 h-4 text-primary" />Nuevo Archivo</CardTitle>
+                <button onClick={() => { setShowNewFile(false); setNewFileName(""); setNewFileContent(""); }} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Nombre del archivo</Label>
+                  <Input
+                    value={newFileName}
+                    onChange={e => setNewFileName(e.target.value)}
+                    placeholder="main.py o cogs/economia.py"
+                    className="font-mono text-sm mt-1"
+                    onKeyDown={e => e.key === "Enter" && handleCreateFile()}
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Contenido inicial (opcional)</Label>
+                  <textarea
+                    value={newFileContent}
+                    onChange={e => setNewFileContent(e.target.value)}
+                    placeholder="# Tu código aquí..."
+                    className="w-full h-32 font-mono text-sm bg-background/50 border border-border/40 rounded-md p-3 resize-none focus:outline-none focus:border-primary/40 mt-1"
+                    spellCheck={false}
+                  />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button variant="ghost" size="sm" onClick={() => { setShowNewFile(false); setNewFileName(""); setNewFileContent(""); }}>Cancelar</Button>
+                  <Button size="sm" onClick={handleCreateFile} disabled={!newFileName.trim() || uploadFile.isPending}>
+                    <FilePlus className="w-3.5 h-3.5 mr-1.5" />Crear Archivo
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* New Folder Dialog */}
+          {showNewFolder && (
+            <Card className="bg-card/60 border-primary/30 border">
+              <CardHeader className="pb-2 flex-row items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2"><FolderPlus className="w-4 h-4 text-primary" />Nueva Carpeta</CardTitle>
+                <button onClick={() => { setShowNewFolder(false); setNewFolderName(""); }} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Nombre de la carpeta</Label>
+                  <Input
+                    value={newFolderName}
+                    onChange={e => setNewFolderName(e.target.value)}
+                    placeholder="cogs"
+                    className="font-mono text-sm mt-1"
+                    onKeyDown={e => e.key === "Enter" && handleCreateFolder()}
+                    autoFocus
+                  />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button variant="ghost" size="sm" onClick={() => { setShowNewFolder(false); setNewFolderName(""); }}>Cancelar</Button>
+                  <Button size="sm" onClick={handleCreateFolder} disabled={!newFolderName.trim() || createFolder.isPending}>
+                    <FolderPlus className="w-3.5 h-3.5 mr-1.5" />Crear Carpeta
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card className="bg-card/60 border-border/40">
-              <CardHeader className="pb-2"><CardTitle className="text-sm">Explorador de Archivos</CardTitle></CardHeader>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm">Archivos</CardTitle>
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1 text-primary hover:bg-primary/10"
+                      onClick={() => { setShowNewFile(true); setShowNewFolder(false); }}>
+                      <FilePlus className="w-3.5 h-3.5" />Nuevo
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:bg-accent/30"
+                      onClick={() => { setShowNewFolder(true); setShowNewFile(false); }}>
+                      <FolderPlus className="w-3.5 h-3.5" />Carpeta
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
               <CardContent className="p-0">
                 <div className="min-h-48 divide-y divide-border/30">
                   {(!files || (files as any[]).length === 0) && (
-                    <p className="text-xs text-muted-foreground p-4 text-center">Sin archivos aún. Despliega tu bot para subir archivos.</p>
+                    <div className="p-4 text-center space-y-2">
+                      <p className="text-xs text-muted-foreground">Sin archivos aún.</p>
+                      <Button size="sm" variant="outline" className="text-xs h-7 gap-1.5" onClick={() => setShowNewFile(true)}>
+                        <FilePlus className="w-3 h-3" />Crear primer archivo
+                      </Button>
+                    </div>
                   )}
                   {(files as any[])?.map((f: any) => (
-                    <button key={f.path} onClick={() => { setSelectedFile(f.path); setFileContent(""); }}
-                      className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-accent/30 transition-colors text-left ${selectedFile === f.path ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}>
-                      {f.type === "directory" ? <Folder className="w-3.5 h-3.5 shrink-0" /> : <FileText className="w-3.5 h-3.5 shrink-0" />}
+                    <button key={f.path} onClick={() => { if (f.type !== "directory") { setSelectedFile(f.path); setFileContent(""); } }}
+                      className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-accent/30 transition-colors text-left ${selectedFile === f.path ? "bg-primary/10 text-primary" : "text-muted-foreground"} ${f.type === "directory" ? "cursor-default" : ""}`}>
+                      {f.type === "directory" ? <Folder className="w-3.5 h-3.5 shrink-0 text-yellow-400" /> : <FileText className="w-3.5 h-3.5 shrink-0" />}
                       <span className="truncate">{f.name}</span>
                     </button>
                   ))}
@@ -323,8 +448,12 @@ export default function BotDetailPage() {
                     spellCheck={false}
                   />
                 ) : (
-                  <div className="h-72 md:h-80 flex items-center justify-center text-muted-foreground text-sm">
-                    Selecciona un archivo para editar
+                  <div className="h-72 md:h-80 flex flex-col items-center justify-center text-muted-foreground text-sm gap-3">
+                    <FileText className="w-8 h-8 opacity-20" />
+                    <p>Selecciona un archivo para editar</p>
+                    <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => setShowNewFile(true)}>
+                      <FilePlus className="w-3 h-3" />Nuevo archivo
+                    </Button>
                   </div>
                 )}
               </CardContent>

@@ -64,24 +64,21 @@ function CreateBotWizard({ onClose, onCreated }: { onClose: () => void; onCreate
     setFetchingInfo(true);
     setBotInfo(null);
     try {
-      const res = await fetch("https://discord.com/api/v10/users/@me", {
-        headers: { Authorization: `Bot ${form.token.trim()}` },
+      const res = await fetch("/api/bots/verify-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ token: form.token.trim() }),
       });
+      const data = await res.json();
       if (res.ok) {
-        const data = await res.json();
-        setBotInfo({
-          id: data.id,
-          username: data.username,
-          avatar: data.avatar ? `https://cdn.discordapp.com/avatars/${data.id}/${data.avatar}.png` : null,
-        });
-        if (!form.name) {
-          setForm(f => ({ ...f, name: data.username }));
-        }
+        setBotInfo({ id: data.id, username: data.username, avatar: data.avatar });
+        if (!form.name) setForm(f => ({ ...f, name: data.username }));
       } else {
-        toast({ title: "Token inválido", description: "No se pudo obtener info del bot. Verifica el token.", variant: "destructive" });
+        toast({ title: data.error || "Token inválido", description: "Verifica el token en Discord Developer Portal.", variant: "destructive" });
       }
     } catch {
-      toast({ title: "Error de conexión", description: "No se pudo conectar a Discord.", variant: "destructive" });
+      toast({ title: "Error de conexión", description: "No se pudo verificar el token.", variant: "destructive" });
     } finally {
       setFetchingInfo(false);
     }
