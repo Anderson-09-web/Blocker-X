@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, startTransition } from "react";
+import { Link } from "wouter";
 import { useGetAIUsage, useListBots, useListFiles, getListFilesQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
@@ -282,9 +283,9 @@ export default function AiPage() {
           {selectedFilePath !== "none" && (
             <span className="text-muted-foreground">· archivo: <code className="bg-black/20 px-1.5 rounded text-xs font-mono text-green-300">{selectedFilePath.split("/").pop()}</code></span>
           )}
-          <a href={`/bots/${selectedBotId}`} className="ml-auto text-xs text-primary hover:underline flex items-center gap-1">
+          <Link href={`/bots/${selectedBotId}`} className="ml-auto text-xs text-primary hover:underline flex items-center gap-1">
             Ver proyecto <ExternalLink className="w-3 h-3" />
-          </a>
+          </Link>
         </div>
       )}
 
