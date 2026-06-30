@@ -9,6 +9,9 @@ export default function LandingPage() {
   const { user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
 
+  const params = new URLSearchParams(window.location.search);
+  const error = params.get("error");
+
   useEffect(() => {
     if (isLoading) return;
     if (!user) return;
@@ -24,6 +27,26 @@ export default function LandingPage() {
     const apiBase = import.meta.env.VITE_API_URL || "";
     window.location.href = `${apiBase}/api/auth/discord`;
   };
+
+  if (error === "banned") {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-4 max-w-sm px-4">
+          <div className="w-16 h-16 bg-destructive/10 rounded-2xl flex items-center justify-center mx-auto border border-destructive/20">
+            <span className="text-3xl">X</span>
+          </div>
+          <h2 className="text-2xl font-bold text-destructive">Account Suspended</h2>
+          <p className="text-muted-foreground text-sm">
+            This account has been suspended. Contact support if you think this is a mistake.
+          </p>
+          <Button variant="outline" onClick={handleDiscordLogin} className="mt-4">
+            <SiDiscord className="mr-2 w-4 h-4" />
+            Try a different account
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading || user) {
     return (

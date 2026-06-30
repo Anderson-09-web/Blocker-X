@@ -92,7 +92,7 @@ router.get("/auth/discord/callback", async (req, res): Promise<void> => {
         avatar: discordUser.avatar || null,
         email: discordUser.email || null,
         lastLogin: new Date(),
-        ...(isOwner ? { isAdmin: true, hasInvite: true } : {}),
+        ...(isOwner ? { isAdmin: true, hasInvite: true, isBanned: false } : {}),
       }).where(eq(usersTable.id, existing.id)).returning();
       user = updated;
     } else {
