@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "wouter";
+import { useAuth } from "@/lib/auth-context";
 import {
   useGetBot, useListFiles, useGetBotLogs, useListEnvVars, useSetEnvVar, useDeleteEnvVar,
   useReadFile, useWriteFile, useDeployBot, useListDeployments, useStartBot, useStopBot,
@@ -15,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Square, RotateCcw, Rocket, Plus, Trash2, Save, Folder, FileText, ChevronLeft, Settings, BookOpen, FilePlus, FolderPlus, X, Loader2, RefreshCw, ChevronRight, FolderInput, AlertTriangle } from "lucide-react";
+import { Play, Square, RotateCcw, Rocket, Plus, Trash2, Save, Folder, FileText, ChevronLeft, Settings, BookOpen, FilePlus, FolderPlus, X, Loader2, RefreshCw, ChevronRight, FolderInput, AlertTriangle, Share2, Users, Crown } from "lucide-react";
 import { Link } from "wouter";
 
 function StatusBadge({ status }: { status: string }) {
@@ -151,6 +152,13 @@ export default function BotDetailPage() {
   const [settingsAvatar, setSettingsAvatar] = useState("");
   const [settingsStatus, setSettingsStatus] = useState("online");
   const [fetchingAvatar, setFetchingAvatar] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [shareDiscordId, setShareDiscordId] = useState("");
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shares, setShares] = useState<any[]>([]);
+  const [sharesLoading, setSharesLoading] = useState(false);
+
+  const { user: currentUser } = useAuth();
 
   const { data: bot, isLoading } = useGetBot(botId, { query: { queryKey: getGetBotQueryKey(botId) } });
   const { data: files, refetch: refetchFiles } = useListFiles(
@@ -206,6 +214,54 @@ export default function BotDetailPage() {
   };
 
   const botDeployments = (deployments as any[])?.filter((d: any) => d.botId === botId) || [];
+
+  const canShare = (currentUser as any)?.plan === "premium" || (currentUser as any)?.isAdmin;
+
+  const fetchShares = async () => {
+    setSharesLoading(true);
+    try {
+      const res = await fetch(`/api/bots/${botId}/shares`, { credentials: "include" });
+      if (res.ok) setShares(await res.json());
+    } finally {
+      setSharesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showShareDialog) fetchShares();
+  }, [showShareDialog]);
+
+  const handleShare = async () => {
+    if (!shareDiscordId.trim()) return;
+    setShareLoading(true);
+    try {
+      const res = await fetch(`/api/bots/${botId}/share`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ discordId: shareDiscordId.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast({ title: data.error || "Error al compartir", variant: "destructive" }); return; }
+      setShareDiscordId("");
+      fetchShares();
+      toast({ title: "Proyecto compartido" });
+    } catch {
+      toast({ title: "Error al compartir", variant: "destructive" });
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  const handleRemoveShare = async (shareId: string) => {
+    try {
+      await fetch(`/api/bots/${botId}/shares/${shareId}`, { method: "DELETE", credentials: "include" });
+      fetchShares();
+      toast({ title: "Acceso removido" });
+    } catch {
+      toast({ title: "Error al remover acceso", variant: "destructive" });
+    }
+  };
 
   const handleAction = (action: "start" | "stop" | "restart") => {
     const fns = { start: startBot, stop: stopBot, restart: restartBot };
@@ -441,8 +497,80 @@ export default function BotDetailPage() {
           {(bot as any).status === "running" && <Button size="sm" variant="outline" onClick={() => handleAction("stop")}><Square className="w-3 h-3 mr-1" />Stop</Button>}
           <Button size="sm" variant="outline" onClick={() => handleAction("restart")}><RotateCcw className="w-3 h-3 mr-1" />Restart</Button>
           <Button size="sm" onClick={handleDeploy} disabled={deployBot.isPending}><Rocket className="w-3 h-3 mr-1" />Deploy</Button>
+          {canShare ? (
+            <Button size="sm" variant="outline" onClick={() => setShowShareDialog(v => !v)}>
+              <Share2 className="w-3 h-3 mr-1" />Share
+            </Button>
+          ) : (
+            <Button size="sm" variant="ghost" className="text-muted-foreground cursor-default" disabled title="Premium feature">
+              <Crown className="w-3 h-3 mr-1 text-yellow-400/60" />Share
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* Share Panel */}
+      {showShareDialog && (
+        <Card className="bg-card/60 border-border/40">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Users className="w-4 h-4" /> Compartir Proyecto
+              </CardTitle>
+              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setShowShareDialog(false)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="p-3 rounded-md border border-border/30 bg-card/40 space-y-1 text-xs text-muted-foreground">
+              <p className="font-medium text-foreground">El colaborador podrá:</p>
+              <p>• Ver y editar archivos del bot</p>
+              <p>• Ver los logs en tiempo real</p>
+              <p>• Ver las variables de entorno</p>
+            </div>
+            <div className="flex gap-2 items-end">
+              <div className="flex-1">
+                <Label htmlFor="share-discord-id" className="text-xs">Discord ID del usuario</Label>
+                <Input
+                  id="share-discord-id"
+                  value={shareDiscordId}
+                  onChange={e => setShareDiscordId(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") handleShare(); }}
+                  placeholder="Ej: 123456789012345678"
+                  className="mt-1 font-mono text-sm"
+                />
+              </div>
+              <Button onClick={handleShare} disabled={shareLoading || !shareDiscordId.trim()} size="sm">
+                {shareLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Plus className="w-3 h-3 mr-1" />}
+                Invitar
+              </Button>
+            </div>
+            {sharesLoading ? (
+              <Skeleton className="h-10 w-full" />
+            ) : shares.length > 0 ? (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground font-medium">Colaboradores actuales</p>
+                {shares.map((s: any) => (
+                  <div key={s.id} className="flex items-center justify-between gap-2 p-2 rounded-md border border-border/30 bg-card/30">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Users className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      <span className="text-sm font-medium truncate">{s.collaboratorUsername}</span>
+                      <span className="text-xs text-muted-foreground font-mono hidden sm:block">{s.collaboratorDiscordId}</span>
+                    </div>
+                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-destructive hover:bg-destructive/10 shrink-0"
+                      onClick={() => handleRemoveShare(s.id)}>
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground text-center py-2">Sin colaboradores aun</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs defaultValue="files">
         <TabsList className="bg-card/60 border border-border/40 w-full md:w-auto flex overflow-x-auto">

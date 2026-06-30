@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, botsTable, deploymentsTable, botLogsTable, envVarsTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { db, botsTable, deploymentsTable, botLogsTable, envVarsTable, botSharesTable, usersTable } from "@workspace/db";
+import { eq, and, desc, or } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, requireInvite } from "../lib/auth-middleware";
 import { createNotification, notifyUser } from "../lib/notifications";
@@ -54,12 +54,28 @@ router.post("/bots/verify-token", requireAuth, async (req, res): Promise<void> =
 
 router.get("/bots", requireAuth, requireInvite, async (req, res): Promise<void> => {
   const user = (req as any).user;
-  const bots = await db.select().from(botsTable)
+  const ownedBots = await db.select().from(botsTable)
     .where(eq(botsTable.userId, user.id))
     .orderBy(desc(botsTable.createdAt));
-  const result = bots.map((bot) => ({
+
+  // Also include bots shared with this user
+  const sharedEntries = await db.select({ botId: botSharesTable.botId })
+    .from(botSharesTable)
+    .where(eq(botSharesTable.collaboratorId, user.id));
+  const sharedBotIds = sharedEntries.map(s => s.botId);
+  let sharedBots: typeof ownedBots = [];
+  if (sharedBotIds.length > 0) {
+    sharedBots = await db.select().from(botsTable)
+      .where(or(
+        ...sharedBotIds.map(id => eq(botsTable.id, id))
+      ));
+  }
+
+  const all = [...ownedBots, ...sharedBots.filter(sb => !ownedBots.find(ob => ob.id === sb.id))];
+  const result = all.map((bot) => ({
     ...formatBot(bot),
     status: getProcessStatus(bot.id) === "running" ? "running" : bot.status,
+    isShared: !ownedBots.find(ob => ob.id === bot.id),
   }));
   res.json(result);
 });
@@ -237,6 +253,66 @@ router.post("/bots/:botId/restart", requireAuth, requireInvite, async (req, res)
     type: "info",
   });
   res.json({ message: "Bot restarting" });
+});
+
+// Share routes
+router.get("/bots/:botId/shares", requireAuth, requireInvite, async (req, res): Promise<void> => {
+  const user = (req as any).user;
+  const botId = getBotId(req);
+  const [bot] = await db.select().from(botsTable).where(and(eq(botsTable.id, botId), eq(botsTable.userId, user.id)));
+  if (!bot) { res.status(404).json({ error: "Bot not found" }); return; }
+  const sharesList = await db.select({
+    id: botSharesTable.id,
+    botId: botSharesTable.botId,
+    collaboratorId: botSharesTable.collaboratorId,
+    canEditFiles: botSharesTable.canEditFiles,
+    canViewLogs: botSharesTable.canViewLogs,
+    createdAt: botSharesTable.createdAt,
+    collaboratorUsername: usersTable.username,
+    collaboratorDiscordId: usersTable.discordId,
+  }).from(botSharesTable)
+    .leftJoin(usersTable, eq(botSharesTable.collaboratorId, usersTable.id))
+    .where(eq(botSharesTable.botId, botId));
+  res.json(sharesList.map(s => ({ ...s, createdAt: s.createdAt?.toISOString() })));
+});
+
+router.post("/bots/:botId/share", requireAuth, requireInvite, async (req, res): Promise<void> => {
+  const user = (req as any).user;
+  const botId = getBotId(req);
+  if (user.plan !== "premium" && !user.isAdmin) {
+    res.status(403).json({ error: "Sharing is a Premium feature. Upgrade to share your projects." });
+    return;
+  }
+  const [bot] = await db.select().from(botsTable).where(and(eq(botsTable.id, botId), eq(botsTable.userId, user.id)));
+  if (!bot) { res.status(404).json({ error: "Bot not found" }); return; }
+  const { discordId } = req.body;
+  if (!discordId) { res.status(400).json({ error: "discordId is required" }); return; }
+  const [targetUser] = await db.select().from(usersTable).where(eq(usersTable.discordId, discordId));
+  if (!targetUser) { res.status(404).json({ error: "User not found. They must have logged in at least once." }); return; }
+  if (targetUser.id === user.id) { res.status(400).json({ error: "You cannot share with yourself." }); return; }
+  const [existing] = await db.select().from(botSharesTable)
+    .where(and(eq(botSharesTable.botId, botId), eq(botSharesTable.collaboratorId, targetUser.id)));
+  if (existing) { res.status(409).json({ error: "This user already has access." }); return; }
+  const [share] = await db.insert(botSharesTable).values({
+    id: randomUUID(), botId, ownerId: user.id, collaboratorId: targetUser.id,
+    canEditFiles: true, canViewLogs: true,
+  }).returning();
+  res.status(201).json({
+    id: share.id, botId: share.botId, collaboratorId: share.collaboratorId,
+    collaboratorUsername: targetUser.username, collaboratorDiscordId: targetUser.discordId,
+    canEditFiles: share.canEditFiles, canViewLogs: share.canViewLogs,
+    createdAt: share.createdAt.toISOString(),
+  });
+});
+
+router.delete("/bots/:botId/shares/:shareId", requireAuth, requireInvite, async (req, res): Promise<void> => {
+  const user = (req as any).user;
+  const botId = getBotId(req);
+  const shareId = Array.isArray(req.params.shareId) ? req.params.shareId[0] : req.params.shareId;
+  const [bot] = await db.select().from(botsTable).where(and(eq(botsTable.id, botId), eq(botsTable.userId, user.id)));
+  if (!bot) { res.status(404).json({ error: "Bot not found" }); return; }
+  await db.delete(botSharesTable).where(and(eq(botSharesTable.id, shareId), eq(botSharesTable.botId, botId)));
+  res.json({ message: "Access removed" });
 });
 
 router.get("/bots/:botId/status", requireAuth, requireInvite, async (req, res): Promise<void> => {
