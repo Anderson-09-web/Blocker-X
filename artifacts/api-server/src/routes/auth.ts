@@ -129,19 +129,26 @@ router.get("/auth/discord/callback", async (req, res): Promise<void> => {
 
     const frontendUrl = process.env.RENDER_APP_URL || process.env.BASE_PATH || "/";
     const base = frontendUrl.endsWith("/") ? frontendUrl : `${frontendUrl}/`;
+
+    let redirectTarget: string;
     if (user.isBanned) {
-      res.redirect(`${base}?error=banned`);
-      return;
+      redirectTarget = `${base}?error=banned`;
+    } else if (!user.hasInvite && !user.isAdmin) {
+      redirectTarget = `${base}invite`;
+    } else if (user.isAdmin) {
+      redirectTarget = `${base}admin`;
+    } else {
+      redirectTarget = `${base}dashboard`;
     }
-    if (!user.hasInvite && !user.isAdmin) {
-      res.redirect(`${base}invite`);
-      return;
-    }
-    if (user.isAdmin) {
-      res.redirect(`${base}admin`);
-      return;
-    }
-    res.redirect(`${base}dashboard`);
+
+    req.session.save((err) => {
+      if (err) {
+        req.log.error({ err }, "Session save error after login");
+        res.redirect("/?error=server_error");
+        return;
+      }
+      res.redirect(redirectTarget);
+    });
   } catch (err) {
     req.log.error({ err }, "Discord OAuth callback error");
     res.redirect("/?error=server_error");
