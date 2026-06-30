@@ -30,11 +30,17 @@ async function runStartupMigrations() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
-    // Index for fast lookup by collaborator
     await client.query(`
       CREATE INDEX IF NOT EXISTS bot_shares_collaborator_idx
         ON bot_shares (collaborator_id)
     `);
+
+    // Add columns that were added to existing tables after initial deploy.
+    await client.query(`
+      ALTER TABLE invitation_codes
+        ADD COLUMN IF NOT EXISTS grants_premium BOOLEAN NOT NULL DEFAULT FALSE
+    `);
+
     logger.info("Startup migrations applied");
   } finally {
     client.release();
