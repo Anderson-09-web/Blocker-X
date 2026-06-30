@@ -140,8 +140,6 @@ export default function BotDetailPage() {
   const [newFolderName, setNewFolderName] = useState("");
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
   const [confirmDeleteFile, setConfirmDeleteFile] = useState<string | null>(null);
-  const [confirmDeleteFolder, setConfirmDeleteFolder] = useState<{ path: string; name: string } | null>(null);
-  const [isDeletingFolder, setIsDeletingFolder] = useState(false);
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [movingFile, setMovingFile] = useState<{ path: string; name: string } | null>(null);
   const [moveTargetFolder, setMoveTargetFolder] = useState("");
@@ -240,34 +238,6 @@ export default function BotDetailPage() {
       },
       onError: () => toast({ title: "Error al eliminar", variant: "destructive" }),
     });
-  };
-
-  const handleDeleteFolder = async () => {
-    if (!confirmDeleteFolder) return;
-    setIsDeletingFolder(true);
-    try {
-      const res = await fetch(`/api/files/${botId}/rmdir`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ path: confirmDeleteFolder.path }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        toast({ title: data.error || "Error al eliminar carpeta", variant: "destructive" });
-      } else {
-        toast({ title: `Carpeta "${confirmDeleteFolder.name}" eliminada` });
-        setConfirmDeleteFolder(null);
-        if (currentFolder === confirmDeleteFolder.name || currentFolder?.startsWith(confirmDeleteFolder.name + "/")) {
-          setCurrentFolder(null);
-        }
-        refetchFiles();
-      }
-    } catch {
-      toast({ title: "Error de conexión", variant: "destructive" });
-    } finally {
-      setIsDeletingFolder(false);
-    }
   };
 
   const handleMoveFile = () => {
@@ -484,27 +454,6 @@ export default function BotDetailPage() {
             </Card>
           )}
 
-          {/* Confirm Delete Folder Dialog */}
-          {confirmDeleteFolder && (
-            <Card className="bg-card/60 border-destructive/40 border">
-              <CardContent className="pt-4 pb-4">
-                <div className="flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">Eliminar carpeta <span className="font-mono text-destructive">{confirmDeleteFolder.name}</span></p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Se eliminarán todos los archivos dentro de esta carpeta. Esta acción no se puede deshacer.</p>
-                    <div className="flex gap-2 mt-3">
-                      <Button size="sm" variant="destructive" onClick={handleDeleteFolder} disabled={isDeletingFolder}>
-                        {isDeletingFolder ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Trash2 className="w-3 h-3 mr-1" />}Eliminar carpeta
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setConfirmDeleteFolder(null)}>Cancelar</Button>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Move File Modal */}
           {showMoveModal && movingFile && (
             <Card className="bg-card/60 border-primary/30 border">
@@ -656,31 +605,22 @@ export default function BotDetailPage() {
                         <span className="truncate">{f.name}</span>
                         {f.type === "directory" && <ChevronRight className="w-3 h-3 shrink-0 opacity-40 ml-auto" />}
                       </button>
-                      <div className="flex items-center gap-0 opacity-0 group-hover:opacity-100 transition-opacity pr-1 shrink-0">
-                        {f.type === "directory" ? (
+                      {f.type !== "directory" && (
+                        <div className="flex items-center gap-0 opacity-0 group-hover:opacity-100 transition-opacity pr-1 shrink-0">
                           <button
-                            title="Eliminar carpeta"
-                            onClick={e => { e.stopPropagation(); setConfirmDeleteFolder({ path: f.path, name: f.name }); }}
+                            title="Mover a carpeta"
+                            onClick={() => { setMovingFile({ path: f.path, name: f.name }); setMoveTargetFolder(currentFolder || ""); setShowMoveModal(true); }}
+                            className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground">
+                            <FolderInput className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            title="Eliminar archivo"
+                            onClick={() => setConfirmDeleteFile(f.path)}
                             className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                        ) : (
-                          <>
-                            <button
-                              title="Mover a carpeta"
-                              onClick={() => { setMovingFile({ path: f.path, name: f.name }); setMoveTargetFolder(currentFolder || ""); setShowMoveModal(true); }}
-                              className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground">
-                              <FolderInput className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              title="Eliminar archivo"
-                              onClick={() => setConfirmDeleteFile(f.path)}
-                              className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
