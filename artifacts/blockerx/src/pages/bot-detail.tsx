@@ -3,7 +3,7 @@ import { useParams } from "wouter";
 import {
   useGetBot, useListFiles, useGetBotLogs, useListEnvVars, useSetEnvVar, useDeleteEnvVar,
   useReadFile, useWriteFile, useDeployBot, useListDeployments, useStartBot, useStopBot,
-  useRestartBot, useUpdateBot, useUploadFile, useCreateFolder,
+  useRestartBot, useUpdateBot, useUploadFile, useCreateFolder, useDeleteFile, useRenameFile,
   getGetBotQueryKey, getListFilesQueryKey, getGetBotLogsQueryKey, getListEnvVarsQueryKey
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Square, RotateCcw, Rocket, Plus, Trash2, Save, Folder, FileText, ChevronLeft, Settings, BookOpen, FilePlus, FolderPlus, X, Loader2, RefreshCw, ChevronRight } from "lucide-react";
+import { Play, Square, RotateCcw, Rocket, Plus, Trash2, Save, Folder, FileText, ChevronLeft, Settings, BookOpen, FilePlus, FolderPlus, X, Loader2, RefreshCw, ChevronRight, FolderInput, AlertTriangle } from "lucide-react";
 import { Link } from "wouter";
 
 function StatusBadge({ status }: { status: string }) {
@@ -139,6 +139,11 @@ export default function BotDetailPage() {
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
+  const [confirmDeleteFile, setConfirmDeleteFile] = useState<string | null>(null);
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [movingFile, setMovingFile] = useState<{ path: string; name: string } | null>(null);
+  const [moveTargetFolder, setMoveTargetFolder] = useState("");
+  const [manualToken, setManualToken] = useState("");
   const [settingsName, setSettingsName] = useState("");
   const [settingsDesc, setSettingsDesc] = useState("");
   const [settingsAvatar, setSettingsAvatar] = useState("");
@@ -165,6 +170,8 @@ export default function BotDetailPage() {
   const writeFile = useWriteFile();
   const uploadFile = useUploadFile();
   const createFolder = useCreateFolder();
+  const deleteFile = useDeleteFile();
+  const renameFile = useRenameFile();
 
   const { data: fileData } = useReadFile(botId, { filePath: selectedFile! }, {
     query: { enabled: !!selectedFile, queryKey: ["readFile", botId, selectedFile] }
@@ -218,6 +225,36 @@ export default function BotDetailPage() {
     writeFile.mutate({ botId, data: { path: selectedFile, content: fileContent } }, {
       onSuccess: () => toast({ title: "Archivo guardado" }),
       onError: () => toast({ title: "Error al guardar", variant: "destructive" }),
+    });
+  };
+
+  const handleDeleteFile = (filePath: string) => {
+    deleteFile.mutate({ botId, data: { path: filePath } }, {
+      onSuccess: () => {
+        refetchFiles();
+        if (selectedFile === filePath) { setSelectedFile(null); setFileContent(""); }
+        setConfirmDeleteFile(null);
+        toast({ title: "Archivo eliminado" });
+      },
+      onError: () => toast({ title: "Error al eliminar", variant: "destructive" }),
+    });
+  };
+
+  const handleMoveFile = () => {
+    if (!movingFile || !moveTargetFolder.trim()) return;
+    const r2Prefix = (bot as any)?.r2Prefix || "";
+    const cleanTarget = moveTargetFolder.trim().replace(/^\/+|\/+$/g, "");
+    const newPath = `${r2Prefix}/${cleanTarget}/${movingFile.name}`;
+    renameFile.mutate({ botId, data: { oldPath: movingFile.path, newPath } }, {
+      onSuccess: () => {
+        refetchFiles();
+        if (selectedFile === movingFile.path) { setSelectedFile(null); setFileContent(""); }
+        setShowMoveModal(false);
+        setMovingFile(null);
+        setMoveTargetFolder("");
+        toast({ title: `Archivo movido a /${cleanTarget}/` });
+      },
+      onError: () => toast({ title: "Error al mover archivo", variant: "destructive" }),
     });
   };
 
@@ -282,9 +319,12 @@ export default function BotDetailPage() {
   };
 
   const handleFetchAvatar = async () => {
-    const tokenVar = (envVars as any[])?.find((v: any) => v.key === "DISCORD_TOKEN");
-    if (!tokenVar?.value) {
-      toast({ title: "No hay DISCORD_TOKEN guardado en Environment", variant: "destructive" });
+    const tokenVar = (envVars as any[])?.find(
+      (v: any) => v.key === "DISCORD_TOKEN" || v.key === "BOT_TOKEN" || v.key === "TOKEN"
+    );
+    const tokenToUse = manualToken.trim() || tokenVar?.value;
+    if (!tokenToUse) {
+      toast({ title: "Pega el token del bot en el campo de abajo o guarda DISCORD_TOKEN en Environment", variant: "destructive" });
       return;
     }
     setFetchingAvatar(true);
@@ -293,18 +333,21 @@ export default function BotDetailPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ token: tokenVar.value }),
+        body: JSON.stringify({ token: tokenToUse }),
       });
-      if (!res.ok) throw new Error("Error");
       const data = await res.json();
+      if (!res.ok) {
+        toast({ title: data.error || "Token inválido", variant: "destructive" });
+        return;
+      }
       if (data.avatar) {
         setSettingsAvatar(data.avatar);
-        toast({ title: `✅ Avatar obtenido`, description: `Bot: ${data.username}` });
+        toast({ title: "Avatar obtenido", description: `Bot: ${data.username}` });
       } else {
-        toast({ title: "El bot no tiene avatar en Discord" });
+        toast({ title: "El bot no tiene avatar configurado en Discord" });
       }
-    } catch {
-      toast({ title: "No se pudo obtener el avatar", variant: "destructive" });
+    } catch (e) {
+      toast({ title: "No se pudo conectar con Discord", variant: "destructive" });
     } finally {
       setFetchingAvatar(false);
     }
@@ -390,6 +433,53 @@ export default function BotDetailPage() {
 
         {/* Files */}
         <TabsContent value="files" className="mt-4 space-y-3">
+          {/* Confirm Delete Dialog */}
+          {confirmDeleteFile && (
+            <Card className="bg-card/60 border-destructive/40 border">
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">Eliminar <span className="font-mono text-destructive">{confirmDeleteFile.split("/").pop()}</span></p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Esta acción no se puede deshacer.</p>
+                    <div className="flex gap-2 mt-3">
+                      <Button size="sm" variant="destructive" onClick={() => handleDeleteFile(confirmDeleteFile)} disabled={deleteFile.isPending}>
+                        {deleteFile.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Trash2 className="w-3 h-3 mr-1" />}Eliminar
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setConfirmDeleteFile(null)}>Cancelar</Button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Move File Modal */}
+          {showMoveModal && movingFile && (
+            <Card className="bg-card/60 border-primary/30 border">
+              <CardHeader className="pb-2 flex-row items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2"><FolderInput className="w-4 h-4 text-primary" />Mover archivo</CardTitle>
+                <button onClick={() => { setShowMoveModal(false); setMovingFile(null); }} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-xs text-muted-foreground">Moviendo: <span className="font-mono text-foreground">{movingFile.name}</span></p>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Carpeta destino (ej: cogs, sistemas, utils)</Label>
+                  <Input value={moveTargetFolder} onChange={e => setMoveTargetFolder(e.target.value)}
+                    placeholder="cogs" className="font-mono text-sm mt-1"
+                    onKeyDown={e => e.key === "Enter" && handleMoveFile()} autoFocus />
+                </div>
+                <p className="text-xs text-muted-foreground">Dejar vacío para mover a la raíz</p>
+                <div className="flex gap-2 justify-end">
+                  <Button variant="ghost" size="sm" onClick={() => { setShowMoveModal(false); setMovingFile(null); }}>Cancelar</Button>
+                  <Button size="sm" onClick={handleMoveFile} disabled={renameFile.isPending}>
+                    <FolderInput className="w-3.5 h-3.5 mr-1.5" />Mover
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* New File Dialog */}
           {showNewFile && (
             <Card className="bg-card/60 border-primary/30 border">
@@ -504,40 +594,70 @@ export default function BotDetailPage() {
                     </div>
                   )}
                   {(files as any[])?.filter((f: any) => f.name !== ".gitkeep").map((f: any) => (
-                    <button key={f.path} onClick={() => {
-                      if (f.type === "directory") {
-                        handleFolderClick(f);
-                      } else {
-                        setSelectedFile(f.path);
-                        setFileContent("");
-                      }
-                    }}
-                      className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-accent/30 transition-colors text-left ${selectedFile === f.path ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}>
-                      {f.type === "directory"
-                        ? <Folder className="w-3.5 h-3.5 shrink-0 text-yellow-400" />
-                        : <FileText className="w-3.5 h-3.5 shrink-0" />}
-                      <span className="truncate flex-1">{f.name}</span>
-                      {f.type === "directory" && <ChevronRight className="w-3 h-3 shrink-0 opacity-40" />}
-                    </button>
+                    <div key={f.path} className={`group flex items-center gap-0 text-sm transition-colors ${selectedFile === f.path ? "bg-primary/10" : "hover:bg-accent/30"}`}>
+                      <button onClick={() => {
+                        if (f.type === "directory") handleFolderClick(f);
+                        else { setSelectedFile(f.path); setFileContent(""); }
+                      }} className={`flex-1 flex items-center gap-2 px-4 py-2 text-left min-w-0 ${selectedFile === f.path ? "text-primary" : "text-muted-foreground"}`}>
+                        {f.type === "directory"
+                          ? <Folder className="w-3.5 h-3.5 shrink-0 text-yellow-400" />
+                          : <FileText className="w-3.5 h-3.5 shrink-0" />}
+                        <span className="truncate">{f.name}</span>
+                        {f.type === "directory" && <ChevronRight className="w-3 h-3 shrink-0 opacity-40 ml-auto" />}
+                      </button>
+                      {f.type !== "directory" && (
+                        <div className="flex items-center gap-0 opacity-0 group-hover:opacity-100 transition-opacity pr-1 shrink-0">
+                          <button
+                            title="Mover a carpeta"
+                            onClick={() => { setMovingFile({ path: f.path, name: f.name }); setMoveTargetFolder(currentFolder || ""); setShowMoveModal(true); }}
+                            className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground">
+                            <FolderInput className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            title="Eliminar archivo"
+                            onClick={() => setConfirmDeleteFile(f.path)}
+                            className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               </CardContent>
             </Card>
             <Card className="md:col-span-2 bg-card/60 border-border/40">
               <CardHeader className="pb-2 flex-row items-center justify-between">
-                <CardTitle className="text-sm">{selectedFile ? selectedFile.split("/").pop() : "Selecciona un archivo"}</CardTitle>
+                <div className="flex items-center gap-2 min-w-0">
+                  <CardTitle className="text-sm truncate">{selectedFile ? selectedFile.split("/").pop() : "Selecciona un archivo"}</CardTitle>
+                  {selectedFile && (
+                    <button title="Eliminar archivo" onClick={() => setConfirmDeleteFile(selectedFile)}
+                      className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive shrink-0">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
                 {selectedFile && <Button size="sm" onClick={handleSaveFile} disabled={writeFile.isPending}><Save className="w-3 h-3 mr-1" />Guardar</Button>}
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-0">
                 {selectedFile ? (
-                  <textarea
-                    value={fileContent}
-                    onChange={e => setFileContent(e.target.value)}
-                    className="w-full h-72 md:h-80 font-mono text-sm bg-background/50 border border-border/40 rounded-md p-3 resize-none focus:outline-none focus:border-primary/40"
-                    spellCheck={false}
-                  />
+                  <div className="flex rounded-b-lg overflow-hidden border border-border/40 font-mono text-sm" style={{ height: "22rem" }}>
+                    <div className="select-none bg-black/20 text-muted-foreground/50 text-right px-2 py-3 overflow-hidden border-r border-border/30 min-w-[3rem]"
+                      style={{ lineHeight: "1.5rem", fontSize: "0.75rem" }}>
+                      {fileContent.split("\n").map((_, i) => (
+                        <div key={i} style={{ height: "1.5rem" }}>{i + 1}</div>
+                      ))}
+                    </div>
+                    <textarea
+                      value={fileContent}
+                      onChange={e => setFileContent(e.target.value)}
+                      className="flex-1 bg-background/50 p-3 resize-none focus:outline-none focus:ring-1 focus:ring-primary/40 text-sm font-mono"
+                      style={{ lineHeight: "1.5rem", tabSize: 4 }}
+                      spellCheck={false}
+                    />
+                  </div>
                 ) : (
-                  <div className="h-72 md:h-80 flex flex-col items-center justify-center text-muted-foreground text-sm gap-3">
+                  <div className="h-72 md:h-80 flex flex-col items-center justify-center text-muted-foreground text-sm gap-3 p-4">
                     <FileText className="w-8 h-8 opacity-20" />
                     <p>Selecciona un archivo para editar</p>
                     <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => setShowNewFile(true)}>
@@ -660,16 +780,30 @@ export default function BotDetailPage() {
                   <Textarea id="bot-desc" value={settingsDesc} onChange={e => setSettingsDesc(e.target.value)}
                     placeholder="¿Qué hace tu bot?" className="mt-1 resize-none h-20" />
                 </div>
-                <div>
+                <div className="space-y-2">
                   <Label htmlFor="bot-avatar">URL del Avatar</Label>
-                  <div className="flex gap-2 mt-1">
+                  <div className="flex gap-2">
                     <Input id="bot-avatar" value={settingsAvatar} onChange={e => setSettingsAvatar(e.target.value)}
                       placeholder="https://cdn.discordapp.com/avatars/..." className="flex-1" />
-                    <Button size="sm" variant="outline" onClick={handleFetchAvatar} disabled={fetchingAvatar} title="Obtener avatar del token de Discord" className="shrink-0">
+                    {settingsAvatar && (
+                      <img src={settingsAvatar} alt="avatar" className="w-9 h-9 rounded-full object-cover border border-border/40 shrink-0" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Para obtener el avatar automáticamente, pega el token del bot abajo:</p>
+                  <div className="flex gap-2">
+                    <Input
+                      value={manualToken}
+                      onChange={e => setManualToken(e.target.value)}
+                      placeholder="Token del bot (no se guarda)"
+                      type="password"
+                      className="flex-1 font-mono text-sm"
+                    />
+                    <Button size="sm" variant="outline" onClick={handleFetchAvatar} disabled={fetchingAvatar} className="shrink-0 gap-1.5">
                       {fetchingAvatar ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                      Obtener
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">Haz clic en 🔄 para obtener el avatar automáticamente del token de Discord</p>
+                  <p className="text-xs text-muted-foreground/60">El token solo se usa para consultar Discord y no se almacena</p>
                 </div>
               </CardContent>
             </Card>

@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from "react";
-import { useAiChat, useGetAIUsage, useListBots, useListFiles, useWriteFile } from "@workspace/api-client-react";
+import { useAiChat, useGetAIUsage, useListBots, useListFiles, useWriteFile, useUploadFile } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Send, Bot, Cpu, FolderCode, FileCode, CheckCircle, Loader2, ExternalLink } from "lucide-react";
+import { Send, Bot, Cpu, FolderCode, FileCode, CheckCircle, Loader2, ExternalLink, FilePlus, X } from "lucide-react";
 
 interface Message {
   role: "user" | "assistant";
@@ -15,7 +16,7 @@ interface Message {
 
 function MarkdownBlock({ content }: { content: string }) {
   const lines = content.split("\n");
-  const result: JSX.Element[] = [];
+  const result: React.ReactNode[] = [];
   let i = 0;
   let key = 0;
 
@@ -106,6 +107,7 @@ export default function AiPage() {
   const { data: bots } = useListBots();
   const aiChat = useAiChat();
   const writeFile = useWriteFile();
+  const uploadFile = useUploadFile();
   const { toast } = useToast();
   const qc = useQueryClient();
 
@@ -115,10 +117,15 @@ export default function AiPage() {
   const [selectedBotId, setSelectedBotId] = useState<string>("none");
   const [selectedFilePath, setSelectedFilePath] = useState<string>("none");
   const [applyingIdx, setApplyingIdx] = useState<number | null>(null);
+  const [creatingFileFor, setCreatingFileFor] = useState<{ msgIdx: number; code: string } | null>(null);
+  const [newFileName, setNewFileName] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  const activeBotId = selectedBotId !== "none" ? selectedBotId : null;
   const selectedBot = (bots as any[])?.find((b: any) => b.id === selectedBotId);
-  const { data: fileList } = useListFiles(selectedBotId !== "none" ? selectedBotId : "none", {}, { query: { enabled: selectedBotId !== "none" } });
+  const { data: fileList, refetch: refetchFiles } = useListFiles(activeBotId || "", {}, {
+    query: { enabled: !!activeBotId }
+  });
   const allFiles = (fileList as any[])?.filter((f: any) => f.type === "file") || [];
 
   useEffect(() => {
@@ -157,19 +164,44 @@ export default function AiPage() {
 
   const applyCodeToFile = async (code: string, msgIdx: number) => {
     if (selectedFilePath === "none" || !selectedBotId || selectedBotId === "none") {
-      toast({ title: "Selecciona un archivo del bot primero", variant: "destructive" });
+      toast({ title: "Selecciona un archivo del bot primero o usa 'Crear archivo'", variant: "destructive" });
       return;
     }
     setApplyingIdx(msgIdx);
     writeFile.mutate({ botId: selectedBotId, data: { path: selectedFilePath, content: code } }, {
       onSuccess: () => {
-        toast({ title: "✅ Código aplicado", description: `Guardado en ${selectedFilePath.split("/").pop()}` });
+        toast({ title: "Codigo aplicado", description: `Guardado en ${selectedFilePath.split("/").pop()}` });
         setApplyingIdx(null);
       },
       onError: () => {
         toast({ title: "Error al guardar", variant: "destructive" });
         setApplyingIdx(null);
       },
+    });
+  };
+
+  const handleCreateFileFromAI = (code: string, msgIdx: number) => {
+    if (!activeBotId) {
+      toast({ title: "Selecciona un proyecto primero", variant: "destructive" });
+      return;
+    }
+    setCreatingFileFor({ msgIdx, code });
+    setNewFileName(language === "python" ? "nuevo_archivo.py" : "nuevo_archivo.js");
+  };
+
+  const confirmCreateFile = () => {
+    if (!creatingFileFor || !newFileName.trim() || !activeBotId) return;
+    uploadFile.mutate({
+      botId: activeBotId,
+      data: { path: "/", name: newFileName.trim(), content: creatingFileFor.code, encoding: "utf-8" }
+    }, {
+      onSuccess: () => {
+        toast({ title: "Archivo creado", description: newFileName.trim() });
+        refetchFiles();
+        setCreatingFileFor(null);
+        setNewFileName("");
+      },
+      onError: () => toast({ title: "Error al crear archivo", variant: "destructive" }),
     });
   };
 
@@ -195,6 +227,27 @@ export default function AiPage() {
           </div>
         </div>
       </div>
+
+      {/* Create file dialog */}
+      {creatingFileFor && (
+        <div className="bg-card/80 border border-primary/30 rounded-lg p-4 flex items-start gap-3">
+          <FilePlus className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+          <div className="flex-1 space-y-2">
+            <p className="text-sm font-medium">Crear archivo con este código</p>
+            <div className="flex gap-2">
+              <Input value={newFileName} onChange={e => setNewFileName(e.target.value)}
+                placeholder="nombre_archivo.py" className="font-mono text-sm flex-1"
+                onKeyDown={e => e.key === "Enter" && confirmCreateFile()} autoFocus />
+              <Button size="sm" onClick={confirmCreateFile} disabled={!newFileName.trim() || uploadFile.isPending}>
+                {uploadFile.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}Crear
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => { setCreatingFileFor(null); setNewFileName(""); }}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="space-y-1">
@@ -298,24 +351,34 @@ export default function AiPage() {
                     ? <MarkdownBlock content={msg.content} />
                     : <p className="whitespace-pre-wrap break-words">{msg.content}</p>
                   }
-                  {msg.role === "assistant" && codeBlocks.length > 0 && selectedBotId !== "none" && (
+                  {msg.role === "assistant" && codeBlocks.length > 0 && activeBotId && (
                     <div className="mt-3 pt-3 border-t border-border/30 flex flex-wrap gap-2">
                       {codeBlocks.map((block, ci) => (
-                        <Button
-                          key={ci}
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
-                          disabled={applyingIdx === i}
-                          onClick={() => applyCodeToFile(block.code, i)}
-                        >
-                          {applyingIdx === i
-                            ? <Loader2 className="w-3 h-3 animate-spin" />
-                            : <CheckCircle className="w-3 h-3" />
-                          }
-                          Aplicar código{codeBlocks.length > 1 ? ` #${ci + 1}` : ""}
-                          {selectedFilePath !== "none" && <span className="opacity-60 ml-1">→ {selectedFilePath.split("/").pop()}</span>}
-                        </Button>
+                        <div key={ci} className="flex gap-1.5 flex-wrap">
+                          {selectedFilePath !== "none" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
+                              disabled={applyingIdx === i}
+                              onClick={() => applyCodeToFile(block.code, i)}
+                            >
+                              {applyingIdx === i
+                                ? <Loader2 className="w-3 h-3 animate-spin" />
+                                : <CheckCircle className="w-3 h-3" />}
+                              Aplicar{codeBlocks.length > 1 ? ` #${ci + 1}` : ""} → {selectedFilePath.split("/").pop()}
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs gap-1.5 border-border/40 text-muted-foreground hover:text-foreground hover:bg-accent/40"
+                            onClick={() => handleCreateFileFromAI(block.code, i)}
+                          >
+                            <FilePlus className="w-3 h-3" />
+                            Crear archivo{codeBlocks.length > 1 ? ` #${ci + 1}` : ""}
+                          </Button>
+                        </div>
                       ))}
                     </div>
                   )}

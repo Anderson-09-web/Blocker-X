@@ -1,8 +1,37 @@
+import React from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: string }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: "" };
+  }
+  static getDerivedStateFromError(err: Error) {
+    return { hasError: true, error: err?.message || "Unknown error" };
+  }
+  componentDidCatch(err: Error) {
+    console.error("ErrorBoundary caught:", err);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="h-screen flex flex-col items-center justify-center bg-background gap-4">
+          <p className="text-destructive font-semibold">Algo salió mal</p>
+          <p className="text-sm text-muted-foreground max-w-sm text-center">{this.state.error}</p>
+          <button
+            className="text-xs bg-primary text-primary-foreground px-4 py-2 rounded-md"
+            onClick={() => { this.setState({ hasError: false, error: "" }); window.location.href = "/dashboard"; }}
+          >Volver al inicio</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 import LandingPage from "@/pages/landing";
 import InvitePage from "@/pages/invite";
@@ -120,7 +149,9 @@ function App() {
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, "") || ""}>
           <AuthProvider>
-            <AppRoutes />
+            <ErrorBoundary>
+              <AppRoutes />
+            </ErrorBoundary>
           </AuthProvider>
         </WouterRouter>
         <Toaster />
