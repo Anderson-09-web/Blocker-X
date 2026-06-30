@@ -142,6 +142,7 @@ router.post("/ai/agent", requireAuth, requireInvite, async (req, res): Promise<v
     }
   } catch { /* ignore */ }
 
+  const mainFile = language === "python" ? "main.py" : "index.js";
   const systemPrompt = `Eres un agente autónomo desarrollador de bots de Discord especializado en ${lang}.
 Tu trabajo es EJECUTAR la tarea del usuario creando, editando o eliminando archivos del bot automáticamente.
 ${botContext}${existingFilesContext}
@@ -160,13 +161,45 @@ INSTRUCCIONES CRÍTICAS:
 }
 [/AGENT_ACTIONS]
 
-REGLAS:
+REGLAS FUNDAMENTALES:
 - Siempre incluye el código COMPLETO y funcional, no fragmentos.
 - Si necesitas modificar un archivo existente, incluye el archivo COMPLETO con los cambios.
 - Para Python usa discord.py / py-cord. Para JS usa discord.js v14.
 - El token del bot viene de la env var DISCORD_TOKEN.
 - Responde SIEMPRE en español.
-- SIEMPRE incluye el bloque [AGENT_ACTIONS] con al menos un archivo.`;
+- SIEMPRE incluye el bloque [AGENT_ACTIONS] con al menos un archivo.
+
+REGLA DE INTEGRACIÓN — MUY IMPORTANTE:
+Cuando crees nuevos archivos de módulos/cogs/sistemas, SIEMPRE debes también incluir "${mainFile}" actualizado en las acciones para que todo quede conectado:
+
+${language === "python" ? `- Si creas cogs (archivos con "class MiCog(commands.Cog)"), en main.py usa "await bot.load_extension('nombre_archivo')" dentro de async def setup_hook o un bucle de setup. El main.py debe importar y cargar TODOS los cogs que existan.
+- Si creas archivos con funciones auxiliares, impórtalos en main.py con "from nombre_archivo import función".
+- Si el sistema es autocontenido en main.py (comandos simples), ponlo todo ahí directamente.
+- El main.py siempre debe ser el punto de entrada completo y funcional que conecta todo.` : `- Si creas comandos en archivos separados, en index.js requiérelos/impórtalos y regístralos en el cliente.
+- Usa "client.commands = new Collection()" y carga los archivos de comandos desde un directorio.
+- El index.js siempre debe ser el punto de entrada completo que conecta todos los módulos.`}
+
+Ejemplo de main.py correcto cuando hay cogs:
+\`\`\`python
+import discord
+from discord.ext import commands
+import os
+
+intents = discord.Intents.all()
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+async def setup_hook():
+    await bot.load_extension("economia")   # carga economia.py
+    await bot.load_extension("moderacion") # carga moderacion.py
+
+bot.setup_hook = setup_hook
+
+@bot.event
+async def on_ready():
+    print(f"Bot listo como {bot.user}")
+
+bot.run(os.getenv("DISCORD_TOKEN"))
+\`\`\``;
 
   try {
     const { content: aiResponse, tokens } = await callGroq([
