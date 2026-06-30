@@ -145,7 +145,7 @@ function AppRoutes() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
+      <TooltipProvider disableHoverableContent skipDelayDuration={0} delayDuration={0}>
         <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, "") || ""}>
           <AuthProvider>
             <ErrorBoundary>

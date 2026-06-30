@@ -98,19 +98,30 @@ router.get("/admin/invites", requireAuth, requireAdmin, async (req, res): Promis
 router.post("/admin/invites", requireAuth, requireAdmin, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const { maxUses, expiresAt, customCode, grantsPremium } = req.body;
-  const code = customCode || Math.random().toString(36).substring(2, 10).toUpperCase();
-  const [invite] = await db.insert(inviteCodesTable).values({
-    id: randomUUID(), code, maxUses: maxUses || null,
-    expiresAt: expiresAt ? new Date(expiresAt) : null,
-    isActive: true, grantsPremium: !!grantsPremium, createdBy: user.id,
-  }).returning();
-  await db.insert(auditLogsTable).values({ id: randomUUID(), userId: user.id, action: grantsPremium ? "create_premium_key" : "create_invite", target: code });
-  res.status(201).json({
-    id: invite.id, code: invite.code, maxUses: invite.maxUses, usesCount: invite.usesCount,
-    expiresAt: invite.expiresAt?.toISOString() || null, isActive: invite.isActive,
-    grantsPremium: invite.grantsPremium,
-    createdBy: invite.createdBy, createdAt: invite.createdAt.toISOString(),
-  });
+  const code = (customCode?.toString().trim().toUpperCase()) || Math.random().toString(36).substring(2, 10).toUpperCase();
+  try {
+    const [invite] = await db.insert(inviteCodesTable).values({
+      id: randomUUID(), code, maxUses: maxUses ? Number(maxUses) : null,
+      expiresAt: expiresAt ? new Date(expiresAt) : null,
+      isActive: true, grantsPremium: !!grantsPremium, createdBy: user.id,
+    }).returning();
+    try {
+      await db.insert(auditLogsTable).values({ id: randomUUID(), userId: user.id, action: grantsPremium ? "create_premium_key" : "create_invite", target: code });
+    } catch (_) { /* non-critical */ }
+    res.status(201).json({
+      id: invite.id, code: invite.code, maxUses: invite.maxUses, usesCount: invite.usesCount,
+      expiresAt: invite.expiresAt?.toISOString() || null, isActive: invite.isActive,
+      grantsPremium: invite.grantsPremium,
+      createdBy: invite.createdBy, createdAt: invite.createdAt.toISOString(),
+    });
+  } catch (err: any) {
+    req.log.error({ err }, "Failed to create invite code");
+    if (err.code === "23505") {
+      res.status(409).json({ error: "That code already exists. Try a different one." });
+    } else {
+      res.status(500).json({ error: "Failed to create code. Check server logs." });
+    }
+  }
 });
 
 router.delete("/admin/invites/:inviteId", requireAuth, requireAdmin, async (req, res): Promise<void> => {

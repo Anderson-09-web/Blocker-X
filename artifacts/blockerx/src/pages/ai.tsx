@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect, startTransition } from "react";
-import { useGetAIUsage, useListBots, useListFiles } from "@workspace/api-client-react";
+import { useGetAIUsage, useListBots, useListFiles, getListFilesQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Send, Bot, Cpu, FolderCode, FileCode, Loader2, ExternalLink, Zap, FileEdit, Trash2 } from "lucide-react";
+import { Send, Bot, Cpu, FolderCode, FileCode, Loader2, ExternalLink, Zap, FileEdit, Trash2, CheckCircle } from "lucide-react";
 
 interface Message {
   role: "user" | "assistant";
@@ -108,7 +108,7 @@ export default function AiPage() {
   const activeBotId = selectedBotId !== "none" ? selectedBotId : null;
   const selectedBot = Array.isArray(bots) ? bots.find((b: any) => b.id === selectedBotId) : undefined;
   const { data: fileList, refetch: refetchFiles } = useListFiles(activeBotId || "", {}, {
-    query: { enabled: !!activeBotId }
+    query: { queryKey: getListFilesQueryKey(activeBotId || "", {}), enabled: !!activeBotId }
   });
   const allFiles = Array.isArray(fileList) ? fileList.filter((f: any) => f.type === "file") : [];
 

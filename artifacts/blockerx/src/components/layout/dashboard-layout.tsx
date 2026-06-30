@@ -19,8 +19,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Menu className="w-5 h-5" />
               </button>
             </SheetTrigger>
-            <SheetContent side="left" className="p-0 w-64 bg-card border-border">
-              <SidebarContent onNavigate={() => setMobileOpen(false)} />
+            <SheetContent
+              side="left"
+              className="p-0 w-64 bg-card border-border"
+              onCloseAutoFocus={(e) => e.preventDefault()}
+            >
+              <SidebarContent onNavigate={() => setTimeout(() => setMobileOpen(false), 50)} />
             </SheetContent>
           </Sheet>
           <div className="flex items-center gap-2">

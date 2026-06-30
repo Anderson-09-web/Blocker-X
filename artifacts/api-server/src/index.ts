@@ -15,7 +15,11 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 async function main() {
-  await resetStaleProcesses();
+  try {
+    await resetStaleProcesses();
+  } catch (err) {
+    logger.warn({ err }, "resetStaleProcesses failed — DB may not be migrated yet. Continuing startup.");
+  }
 
   app.listen(port, "0.0.0.0", (err?: Error) => {
     if (err) {
