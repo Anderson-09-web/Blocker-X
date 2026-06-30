@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, startTransition } from "react";
 import { useGetAIUsage, useListBots, useListFiles, useWriteFile, useUploadFile } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
@@ -257,9 +257,9 @@ export default function AiPage() {
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-        <div className="space-y-1">
+        <div key="proyecto" className="space-y-1">
           <label className="text-xs text-muted-foreground flex items-center gap-1.5"><FolderCode className="w-3 h-3" />Proyecto</label>
-          <Select value={selectedBotId} onValueChange={v => { setSelectedBotId(v); setSelectedFilePath("none"); }}>
+          <Select value={selectedBotId} onValueChange={v => { startTransition(() => { setSelectedBotId(v); setSelectedFilePath("none"); }); }}>
             <SelectTrigger className="bg-card/60 border-border/40 text-sm h-9">
               <SelectValue placeholder="Ninguno" />
             </SelectTrigger>
@@ -272,24 +272,26 @@ export default function AiPage() {
           </Select>
         </div>
 
-        {!agentMode && (
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground flex items-center gap-1.5"><FileCode className="w-3 h-3" />Archivo (contexto)</label>
-            <Select value={selectedFilePath} onValueChange={setSelectedFilePath} disabled={selectedBotId === "none"}>
-              <SelectTrigger className="bg-card/60 border-border/40 text-sm h-9">
-                <SelectValue placeholder="Ninguno" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Ningún archivo</SelectItem>
-                {allFiles.map((f: any) => (
-                  <SelectItem key={f.path} value={f.path}>{f.path.split("/").pop()}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+        <div key="archivo" className="space-y-1">
+          {!agentMode && (
+            <>
+              <label className="text-xs text-muted-foreground flex items-center gap-1.5"><FileCode className="w-3 h-3" />Archivo (contexto)</label>
+              <Select value={selectedFilePath} onValueChange={setSelectedFilePath} disabled={selectedBotId === "none"}>
+                <SelectTrigger className="bg-card/60 border-border/40 text-sm h-9">
+                  <SelectValue placeholder="Ninguno" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Ningún archivo</SelectItem>
+                  {allFiles.map((f: any) => (
+                    <SelectItem key={f.path} value={f.path}>{f.path.split("/").pop()}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          )}
+        </div>
 
-        <div className="space-y-1">
+        <div key="lenguaje" className="space-y-1">
           <label className="text-xs text-muted-foreground">Lenguaje</label>
           <Select value={language} onValueChange={setLanguage}>
             <SelectTrigger className="bg-card/60 border-border/40 text-sm h-9">
@@ -302,7 +304,7 @@ export default function AiPage() {
           </Select>
         </div>
 
-        <div className="space-y-1">
+        <div key="modo" className="space-y-1">
           <label className="text-xs text-muted-foreground">Modo</label>
           <Button
             variant={agentMode ? "default" : "outline"}
