@@ -119,6 +119,8 @@ export default function AiPage() {
   const allFiles = Array.isArray(fileList) ? fileList.filter((f: any) => f.type === "file") : [];
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  // Reset file context when the selected bot changes (separate tick to avoid Radix portal conflicts)
+  useEffect(() => { setSelectedFilePath("none"); }, [selectedBotId]);
   useEffect(() => {
     if (selectedBot) setLanguage((selectedBot as any).language === "python" ? "python" : "javascript");
   }, [selectedBotId]);
@@ -259,7 +261,7 @@ export default function AiPage() {
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
         <div key="proyecto" className="space-y-1">
           <label className="text-xs text-muted-foreground flex items-center gap-1.5"><FolderCode className="w-3 h-3" />Proyecto</label>
-          <Select value={selectedBotId} onValueChange={v => { startTransition(() => { setSelectedBotId(v); setSelectedFilePath("none"); }); }}>
+          <Select value={selectedBotId} onValueChange={v => { startTransition(() => setSelectedBotId(v)); }}>
             <SelectTrigger className="bg-card/60 border-border/40 text-sm h-9">
               <SelectValue placeholder="Ninguno" />
             </SelectTrigger>

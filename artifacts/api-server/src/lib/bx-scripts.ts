@@ -33,6 +33,12 @@ try:
 
     def _bx_patched_init(self, *args, **kwargs):
         _bx_orig_init(self, *args, **kwargs)
+
+        # Idempotente: si ya se registró en esta instancia, salir.
+        if getattr(self, "_bx_status_registered", False):
+            return
+        self._bx_status_registered = True
+
         _bx_client = self
 
         async def _bx_on_ready():
@@ -45,9 +51,20 @@ try:
             except Exception as _e:
                 print(f"[BlockerX] Status error: {_e}", file=_sys.stderr, flush=True)
 
-        # add_listener es el mecanismo oficial de discord.py.
-        # Se ejecuta junto al on_ready del usuario, sin reemplazarlo.
-        self.add_listener(_bx_on_ready, "on_ready")
+        if callable(getattr(self, "add_listener", None)):
+            # discord.Client v2+ y commands.Bot tienen add_listener.
+            # Es aditivo: no reemplaza el on_ready del usuario.
+            self.add_listener(_bx_on_ready, "on_ready")
+        else:
+            # Fallback para versiones antiguas: encadenar con el handler existente.
+            _prev_on_ready = getattr(self, "on_ready", None)
+
+            async def _bx_on_ready_chained():
+                if callable(_prev_on_ready):
+                    await _prev_on_ready()
+                await _bx_on_ready()
+
+            self.on_ready = _bx_on_ready_chained
 
     _d.Client.__init__ = _bx_patched_init
     print("[BlockerX] Patch de status cargado.", file=_sys.stderr, flush=True)
