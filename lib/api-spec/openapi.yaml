@@ -1197,6 +1197,8 @@ components:
           type: ["string", "null"]
         customCode:
           type: ["string", "null"]
+        grantsPremium:
+          type: boolean
       required: []
 
     Bot:
@@ -1247,9 +1249,18 @@ components:
           enum: [python, javascript]
         mainFile:
           type: string
+        token:
+          type: string
+        clientId:
+          type: string
+        clientSecret:
+          type: string
       required:
         - name
         - language
+        - token
+        - clientId
+        - clientSecret
 
     BotUpdate:
       type: object

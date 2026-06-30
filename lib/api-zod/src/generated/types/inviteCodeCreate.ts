@@ -13,4 +13,5 @@ export interface InviteCodeCreate {
   expiresAt?: string | null;
   /** @nullable */
   customCode?: string | null;
+  grantsPremium?: boolean;
 }

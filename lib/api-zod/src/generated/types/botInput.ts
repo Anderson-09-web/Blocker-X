@@ -13,4 +13,7 @@ export interface BotInput {
   description?: string;
   language: BotInputLanguage;
   mainFile?: string;
+  token: string;
+  clientId: string;
+  clientSecret: string;
 }

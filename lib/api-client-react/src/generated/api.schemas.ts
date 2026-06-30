@@ -87,6 +87,7 @@ export interface InviteCodeCreate {
   expiresAt?: string | null;
   /** @nullable */
   customCode?: string | null;
+  grantsPremium?: boolean;
 }
 
 export type BotLanguage = typeof BotLanguage[keyof typeof BotLanguage];
@@ -137,6 +138,9 @@ export interface BotInput {
   description?: string;
   language: BotInputLanguage;
   mainFile?: string;
+  token: string;
+  clientId: string;
+  clientSecret: string;
 }
 
 export interface BotUpdate {

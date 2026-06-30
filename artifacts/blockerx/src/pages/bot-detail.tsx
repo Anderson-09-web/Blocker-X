@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Square, RotateCcw, Rocket, Plus, Trash2, Save, Folder, FileText, ChevronLeft, Settings } from "lucide-react";
+import { Play, Square, RotateCcw, Rocket, Plus, Trash2, Save, Folder, FileText, ChevronLeft, Settings, BookOpen } from "lucide-react";
 import { Link } from "wouter";
 
 function StatusBadge({ status }: { status: string }) {
@@ -40,6 +40,89 @@ const BOT_STATUSES = [
   { value: "dnd", label: "🔴 Do Not Disturb" },
   { value: "invisible", label: "⚫ Invisible" },
 ];
+
+const PYTHON_COMMANDS_GUIDE = `import discord
+from discord.ext import commands
+import os
+
+bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
+
+@bot.event
+async def on_ready():
+    print(f"Bot online: {bot.user}")
+
+# ✅ Comando simple
+@bot.command(name="ping")
+async def ping(ctx):
+    await ctx.send("🏓 Pong!")
+
+# ✅ Comando con argumento
+@bot.command(name="saludo")
+async def saludo(ctx, nombre: str = "usuario"):
+    await ctx.send(f"¡Hola, {nombre}! 👋")
+
+# ✅ Comando con embed
+@bot.command(name="info")
+async def info(ctx):
+    embed = discord.Embed(
+        title="Mi Bot",
+        description="Bot creado en Blocker X",
+        color=discord.Color.blue()
+    )
+    embed.add_field(name="Prefijo", value="!")
+    await ctx.send(embed=embed)
+
+# ✅ Sistema de moderación (kick)
+@bot.command(name="kick")
+@commands.has_permissions(kick_members=True)
+async def kick(ctx, member: discord.Member, *, reason="Sin razón"):
+    await member.kick(reason=reason)
+    await ctx.send(f"✅ {member.name} fue expulsado.")
+
+bot.run(os.getenv("DISCORD_TOKEN"))`;
+
+const JS_COMMANDS_GUIDE = `const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+require("dotenv").config();
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
+});
+
+client.once("ready", () => {
+  console.log(\`Bot online: \${client.user.tag}\`);
+});
+
+// ✅ Detector de mensajes
+client.on("messageCreate", async (message) => {
+  if (message.author.bot) return;
+
+  // ✅ Comando !ping
+  if (message.content === "!ping") {
+    return message.reply("🏓 Pong!");
+  }
+
+  // ✅ Comando !saludo
+  if (message.content.startsWith("!saludo")) {
+    const nombre = message.content.split(" ")[1] || "usuario";
+    return message.reply(\`¡Hola, \${nombre}! 👋\`);
+  }
+
+  // ✅ Comando !info con embed
+  if (message.content === "!info") {
+    const embed = new EmbedBuilder()
+      .setTitle("Mi Bot")
+      .setDescription("Bot creado en Blocker X")
+      .setColor(0x5865F2)
+      .addFields({ name: "Prefijo", value: "!" });
+    return message.reply({ embeds: [embed] });
+  }
+});
+
+client.login(process.env.DISCORD_TOKEN);`;
 
 export default function BotDetailPage() {
   const { botId } = useParams<{ botId: string }>();
@@ -66,7 +149,6 @@ export default function BotDetailPage() {
   const [newEnvKey, setNewEnvKey] = useState("");
   const [newEnvVal, setNewEnvVal] = useState("");
 
-  // Settings form state
   const [settingsName, setSettingsName] = useState("");
   const [settingsDesc, setSettingsDesc] = useState("");
   const [settingsAvatar, setSettingsAvatar] = useState("");
@@ -80,13 +162,22 @@ export default function BotDetailPage() {
     if (fileData?.content !== undefined) setFileContent(fileData.content);
   }, [fileData]);
 
-  // Sync settings form when bot loads
   useEffect(() => {
     if (bot) {
       setSettingsName((bot as any).name || "");
       setSettingsDesc((bot as any).description || "");
     }
   }, [bot]);
+
+  // Load BOT_STATUS and BOT_AVATAR_URL from env vars
+  useEffect(() => {
+    if (envVars && Array.isArray(envVars)) {
+      const statusVar = (envVars as any[]).find((v: any) => v.key === "BOT_STATUS");
+      const avatarVar = (envVars as any[]).find((v: any) => v.key === "BOT_AVATAR_URL");
+      if (statusVar?.value) setSettingsStatus(statusVar.value);
+      if (avatarVar?.value) setSettingsAvatar(avatarVar.value);
+    }
+  }, [envVars]);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: getGetBotQueryKey(botId) });
@@ -98,23 +189,23 @@ export default function BotDetailPage() {
   const handleAction = (action: "start" | "stop" | "restart") => {
     const fns = { start: startBot, stop: stopBot, restart: restartBot };
     (fns[action] as any).mutate({ botId }, {
-      onSuccess: () => { refresh(); toast({ title: `Bot ${action}ed` }); },
-      onError: () => toast({ title: `Failed to ${action}`, variant: "destructive" }),
+      onSuccess: () => { refresh(); toast({ title: `Bot ${action === "start" ? "iniciado" : action === "stop" ? "detenido" : "reiniciado"}` }); },
+      onError: () => toast({ title: `Error al ${action}`, variant: "destructive" }),
     });
   };
 
   const handleDeploy = () => {
     deployBot.mutate({ botId }, {
-      onSuccess: () => { refresh(); toast({ title: "Deployment started" }); },
-      onError: () => toast({ title: "Deploy failed", variant: "destructive" }),
+      onSuccess: () => { refresh(); toast({ title: "Despliegue iniciado" }); },
+      onError: () => toast({ title: "Error al desplegar", variant: "destructive" }),
     });
   };
 
   const handleSaveFile = () => {
     if (!selectedFile) return;
     writeFile.mutate({ botId, data: { path: selectedFile, content: fileContent } }, {
-      onSuccess: () => toast({ title: "File saved" }),
-      onError: () => toast({ title: "Save failed", variant: "destructive" }),
+      onSuccess: () => toast({ title: "Archivo guardado" }),
+      onError: () => toast({ title: "Error al guardar", variant: "destructive" }),
     });
   };
 
@@ -124,9 +215,9 @@ export default function BotDetailPage() {
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: getListEnvVarsQueryKey(botId) });
         setNewEnvKey(""); setNewEnvVal("");
-        toast({ title: "Variable saved" });
+        toast({ title: "Variable guardada" });
       },
-      onError: () => toast({ title: "Failed to save", variant: "destructive" }),
+      onError: () => toast({ title: "Error al guardar", variant: "destructive" }),
     });
   };
 
@@ -137,33 +228,29 @@ export default function BotDetailPage() {
 
     updateBot.mutate({ botId, data: updates }, {
       onSuccess: async () => {
-        // Save avatar URL and status as env vars if provided
-        const envPromises = [];
-        if (settingsAvatar.trim()) {
-          envPromises.push(
+        const envUpdates = [
+          { key: "BOT_STATUS", value: settingsStatus },
+          ...(settingsAvatar.trim() ? [{ key: "BOT_AVATAR_URL", value: settingsAvatar.trim() }] : []),
+        ];
+        await Promise.all(
+          envUpdates.map(entry =>
             new Promise<void>((resolve) =>
-              setEnvVar.mutate({ botId, data: { key: "BOT_AVATAR_URL", value: settingsAvatar.trim() } }, { onSuccess: () => resolve(), onError: () => resolve() })
+              setEnvVar.mutate({ botId, data: entry }, { onSuccess: () => resolve(), onError: () => resolve() })
             )
-          );
-        }
-        if (settingsStatus) {
-          envPromises.push(
-            new Promise<void>((resolve) =>
-              setEnvVar.mutate({ botId, data: { key: "BOT_STATUS", value: settingsStatus } }, { onSuccess: () => resolve(), onError: () => resolve() })
-            )
-          );
-        }
-        await Promise.all(envPromises);
+          )
+        );
         refresh();
         qc.invalidateQueries({ queryKey: getListEnvVarsQueryKey(botId) });
-        toast({ title: "Settings saved" });
+        toast({ title: "Configuración guardada. Reinicia el bot para aplicar cambios." });
       },
-      onError: () => toast({ title: "Failed to save settings", variant: "destructive" }),
+      onError: () => toast({ title: "Error al guardar configuración", variant: "destructive" }),
     });
   };
 
   if (isLoading) return <div className="space-y-4"><Skeleton className="h-12 w-64" /><Skeleton className="h-64 w-full" /></div>;
-  if (!bot) return <div className="text-muted-foreground">Bot not found.</div>;
+  if (!bot) return <div className="text-muted-foreground">Bot no encontrado.</div>;
+
+  const lang = (bot as any).language as "python" | "javascript";
 
   return (
     <div className="space-y-6">
@@ -178,7 +265,7 @@ export default function BotDetailPage() {
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-xl md:text-2xl font-bold truncate">{(bot as any).name}</h1>
             <StatusBadge status={(bot as any).status} />
-            <span className="text-sm text-muted-foreground">{(bot as any).language === "python" ? "Python" : "JavaScript"}</span>
+            <span className="text-sm text-muted-foreground">{lang === "python" ? "Python" : "JavaScript"}</span>
           </div>
           {(bot as any).description && (
             <p className="text-sm text-muted-foreground mt-0.5 truncate">{(bot as any).description}</p>
@@ -199,17 +286,18 @@ export default function BotDetailPage() {
           <TabsTrigger value="logs" className="flex-1 md:flex-none">Logs</TabsTrigger>
           <TabsTrigger value="deployments" className="flex-1 md:flex-none">Deployments</TabsTrigger>
           <TabsTrigger value="settings" className="flex-1 md:flex-none"><Settings className="w-3.5 h-3.5 mr-1" />Settings</TabsTrigger>
+          <TabsTrigger value="guide" className="flex-1 md:flex-none"><BookOpen className="w-3.5 h-3.5 mr-1" />Guía</TabsTrigger>
         </TabsList>
 
         {/* Files */}
         <TabsContent value="files" className="mt-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card className="bg-card/60 border-border/40">
-              <CardHeader className="pb-2"><CardTitle className="text-sm">File Explorer</CardTitle></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Explorador de Archivos</CardTitle></CardHeader>
               <CardContent className="p-0">
                 <div className="min-h-48 divide-y divide-border/30">
                   {(!files || (files as any[]).length === 0) && (
-                    <p className="text-xs text-muted-foreground p-4 text-center">No files yet. Deploy your bot to upload files.</p>
+                    <p className="text-xs text-muted-foreground p-4 text-center">Sin archivos aún. Despliega tu bot para subir archivos.</p>
                   )}
                   {(files as any[])?.map((f: any) => (
                     <button key={f.path} onClick={() => { setSelectedFile(f.path); setFileContent(""); }}
@@ -223,8 +311,8 @@ export default function BotDetailPage() {
             </Card>
             <Card className="md:col-span-2 bg-card/60 border-border/40">
               <CardHeader className="pb-2 flex-row items-center justify-between">
-                <CardTitle className="text-sm">{selectedFile ? selectedFile.split("/").pop() : "Select a file"}</CardTitle>
-                {selectedFile && <Button size="sm" onClick={handleSaveFile} disabled={writeFile.isPending}><Save className="w-3 h-3 mr-1" />Save</Button>}
+                <CardTitle className="text-sm">{selectedFile ? selectedFile.split("/").pop() : "Selecciona un archivo"}</CardTitle>
+                {selectedFile && <Button size="sm" onClick={handleSaveFile} disabled={writeFile.isPending}><Save className="w-3 h-3 mr-1" />Guardar</Button>}
               </CardHeader>
               <CardContent>
                 {selectedFile ? (
@@ -236,7 +324,7 @@ export default function BotDetailPage() {
                   />
                 ) : (
                   <div className="h-72 md:h-80 flex items-center justify-center text-muted-foreground text-sm">
-                    Select a file to edit
+                    Selecciona un archivo para editar
                   </div>
                 )}
               </CardContent>
@@ -247,16 +335,16 @@ export default function BotDetailPage() {
         {/* Environment */}
         <TabsContent value="env" className="mt-4">
           <Card className="bg-card/60 border-border/40">
-            <CardHeader><CardTitle className="text-sm">Environment Variables</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-sm">Variables de Entorno</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="flex gap-2 flex-col sm:flex-row">
-                <Input value={newEnvKey} onChange={e => setNewEnvKey(e.target.value)} placeholder="KEY" className="font-mono text-sm" />
-                <Input value={newEnvVal} onChange={e => setNewEnvVal(e.target.value)} placeholder="VALUE" type="password" className="font-mono text-sm" />
+                <Input value={newEnvKey} onChange={e => setNewEnvKey(e.target.value)} placeholder="NOMBRE_VARIABLE" className="font-mono text-sm" />
+                <Input value={newEnvVal} onChange={e => setNewEnvVal(e.target.value)} placeholder="valor" type="password" className="font-mono text-sm" />
                 <Button onClick={handleAddEnv} disabled={!newEnvKey}><Plus className="w-4 h-4" /></Button>
               </div>
               <div className="divide-y divide-border/30 rounded-md border border-border/40 overflow-hidden">
                 {(!envVars || (envVars as any[]).length === 0) && (
-                  <p className="text-sm text-muted-foreground p-4 text-center">No environment variables set.</p>
+                  <p className="text-sm text-muted-foreground p-4 text-center">No hay variables configuradas.</p>
                 )}
                 {(envVars as any[])?.map((v: any) => (
                   <div key={v.id} className="flex items-center justify-between px-4 py-2.5">
@@ -278,11 +366,11 @@ export default function BotDetailPage() {
         {/* Logs */}
         <TabsContent value="logs" className="mt-4">
           <Card className="bg-card/60 border-border/40">
-            <CardHeader><CardTitle className="text-sm font-medium">Console Output</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-sm font-medium">Salida de Consola</CardTitle></CardHeader>
             <CardContent>
               <div className="h-96 overflow-y-auto font-mono text-xs space-y-1 bg-background/40 rounded-md p-4 border border-border/30">
                 {(!logs || (logs as any[]).length === 0) && (
-                  <p className="text-muted-foreground text-center py-8">No logs yet. Start your bot to see output.</p>
+                  <p className="text-muted-foreground text-center py-8">Sin logs aún. Inicia tu bot para ver la salida.</p>
                 )}
                 {(logs as any[])?.map((l: any) => (
                   <div key={l.id} className="flex items-start gap-3">
@@ -299,10 +387,10 @@ export default function BotDetailPage() {
         {/* Deployments */}
         <TabsContent value="deployments" className="mt-4">
           <Card className="bg-card/60 border-border/40">
-            <CardHeader><CardTitle className="text-sm">Deployment History</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-sm">Historial de Despliegues</CardTitle></CardHeader>
             <CardContent>
               <div className="divide-y divide-border/30">
-                {botDeployments.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No deployments yet.</p>}
+                {botDeployments.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">Sin despliegues aún.</p>}
                 {botDeployments.map((d: any) => (
                   <div key={d.id} className="py-3 flex items-center justify-between">
                     <div>
@@ -325,7 +413,7 @@ export default function BotDetailPage() {
         <TabsContent value="settings" className="mt-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card className="bg-card/60 border-border/40">
-              <CardHeader><CardTitle className="text-sm">Bot Profile</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-sm">Perfil del Bot</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-4 mb-4">
                   <div className="w-16 h-16 rounded-full bg-muted border border-border/40 overflow-hidden shrink-0">
@@ -340,34 +428,34 @@ export default function BotDetailPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{settingsName || (bot as any).name}</p>
-                    <p className="text-xs text-muted-foreground">{(bot as any).language === "python" ? "Python" : "JavaScript"} bot</p>
+                    <p className="text-xs text-muted-foreground">{lang === "python" ? "Python" : "JavaScript"} bot</p>
                   </div>
                 </div>
 
                 <div>
-                  <Label htmlFor="bot-name">Bot Name</Label>
+                  <Label htmlFor="bot-name">Nombre del Bot</Label>
                   <Input id="bot-name" value={settingsName} onChange={e => setSettingsName(e.target.value)}
                     placeholder={(bot as any).name} className="mt-1" />
                 </div>
                 <div>
-                  <Label htmlFor="bot-desc">Description</Label>
+                  <Label htmlFor="bot-desc">Descripción</Label>
                   <Textarea id="bot-desc" value={settingsDesc} onChange={e => setSettingsDesc(e.target.value)}
-                    placeholder="What does your bot do?" className="mt-1 resize-none h-20" />
+                    placeholder="¿Qué hace tu bot?" className="mt-1 resize-none h-20" />
                 </div>
                 <div>
-                  <Label htmlFor="bot-avatar">Avatar URL</Label>
+                  <Label htmlFor="bot-avatar">URL del Avatar</Label>
                   <Input id="bot-avatar" value={settingsAvatar} onChange={e => setSettingsAvatar(e.target.value)}
                     placeholder="https://example.com/avatar.png" className="mt-1" />
-                  <p className="text-xs text-muted-foreground mt-1">Saved as BOT_AVATAR_URL env var — use it in your bot code</p>
+                  <p className="text-xs text-muted-foreground mt-1">Se guarda como variable BOT_AVATAR_URL — úsala en tu código</p>
                 </div>
               </CardContent>
             </Card>
 
             <Card className="bg-card/60 border-border/40">
-              <CardHeader><CardTitle className="text-sm">Presence & Status</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-sm">Presencia y Estado</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-xs text-muted-foreground">
-                  Choose a default status. Saved as <code className="bg-muted px-1 rounded">BOT_STATUS</code> env var — read it in your bot code to set the presence.
+                  Elige un estado por defecto. Se guarda como <code className="bg-muted px-1 rounded">BOT_STATUS</code> — léelo en tu código para configurar la presencia del bot en Discord. Reinicia el bot después de cambiar.
                 </p>
                 <div className="space-y-2">
                   {BOT_STATUSES.map(s => (
@@ -382,8 +470,8 @@ export default function BotDetailPage() {
                   ))}
                 </div>
                 <div className="p-3 bg-muted/30 rounded-md border border-border/30 text-xs text-muted-foreground font-mono">
-                  <p className="font-semibold text-foreground/60 mb-1"># Example usage in your bot:</p>
-                  {(bot as any).language === "python" ? (
+                  <p className="font-semibold text-foreground/60 mb-1"># Ejemplo en tu bot:</p>
+                  {lang === "python" ? (
                     <>
                       <p>import os, discord</p>
                       <p>status = os.getenv("BOT_STATUS", "online")</p>
@@ -392,15 +480,105 @@ export default function BotDetailPage() {
                   ) : (
                     <>
                       <p>const status = process.env.BOT_STATUS || 'online'</p>
-                      <p>client.user.setPresence({"{ status }"});</p>
+                      <p>{"client.user.setPresence({ status });"}</p>
                     </>
                   )}
                 </div>
 
                 <Button onClick={handleSaveSettings} disabled={updateBot.isPending} className="w-full">
                   <Save className="w-4 h-4 mr-2" />
-                  {updateBot.isPending ? "Saving..." : "Save Settings"}
+                  {updateBot.isPending ? "Guardando..." : "Guardar Configuración"}
                 </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Guide */}
+        <TabsContent value="guide" className="mt-4">
+          <div className="space-y-4">
+            <Card className="bg-card/60 border-border/40">
+              <CardHeader>
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-primary" />
+                  Cómo agregar comandos y sistemas a tu bot
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Steps */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {[
+                    { n: 1, title: "Edita el archivo principal", desc: lang === "python" ? "Abre main.py en la pestaña Files y escribe tus comandos" : "Abre index.js en la pestaña Files y escribe tus comandos" },
+                    { n: 2, title: "Agrega dependencias", desc: lang === "python" ? "Agrega librerías a requirements.txt (ej: aiohttp, pillow)" : "Agrega paquetes a package.json (ej: axios, moment)" },
+                    { n: 3, title: "Despliega y prueba", desc: "Presiona Deploy arriba y luego prueba tus comandos en Discord" },
+                  ].map(step => (
+                    <div key={step.n} className="p-3 bg-muted/30 rounded-lg border border-border/30">
+                      <div className="w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center mb-2">{step.n}</div>
+                      <p className="text-sm font-medium">{step.title}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{step.desc}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Code example */}
+                <div>
+                  <p className="text-sm font-medium mb-2 flex items-center gap-2">
+                    📋 Código de ejemplo completo ({lang === "python" ? "Python" : "JavaScript"})
+                  </p>
+                  <div className="relative">
+                    <pre className="bg-background/70 border border-border/40 rounded-lg p-4 text-xs font-mono overflow-x-auto text-foreground/80 leading-relaxed">
+                      {lang === "python" ? PYTHON_COMMANDS_GUIDE : JS_COMMANDS_GUIDE}
+                    </pre>
+                  </div>
+                </div>
+
+                {/* Tips */}
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">💡 Tips importantes</p>
+                  <div className="space-y-2">
+                    {(lang === "python" ? [
+                      { icon: "🔑", text: "Tu token ya está guardado como DISCORD_TOKEN — no lo escribas en el código, usa os.getenv('DISCORD_TOKEN')" },
+                      { icon: "📦", text: "Para instalar dependencias: agrégalas a requirements.txt y haz Deploy" },
+                      { icon: "🔄", text: "Cambios en el código requieren hacer Deploy para aplicarse" },
+                      { icon: "🔐", text: "Guarda tus claves de API en la pestaña Environment, nunca en el código" },
+                      { icon: "📡", text: "Necesitas activar los Intents en Discord Developer Portal → Tu App → Bot → Privileged Gateway Intents" },
+                    ] : [
+                      { icon: "🔑", text: "Tu token ya está guardado como DISCORD_TOKEN — usa process.env.DISCORD_TOKEN en lugar de escribirlo directamente" },
+                      { icon: "📦", text: "Para instalar paquetes: agrégalos a package.json y haz Deploy" },
+                      { icon: "🔄", text: "Cambios en el código requieren hacer Deploy para aplicarse" },
+                      { icon: "🔐", text: "Guarda tus claves de API en la pestaña Environment, nunca en el código" },
+                      { icon: "📡", text: "Necesitas activar MessageContent Intent en Discord Developer Portal → Tu App → Bot → Privileged Gateway Intents" },
+                    ]).map((tip, i) => (
+                      <div key={i} className="flex gap-3 p-2.5 bg-muted/20 rounded-md border border-border/20">
+                        <span className="shrink-0 text-base">{tip.icon}</span>
+                        <p className="text-xs text-muted-foreground">{tip.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Quick commands reference */}
+                <div>
+                  <p className="text-sm font-medium mb-2">⚡ Referencia rápida de sistemas</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {[
+                      { name: "Comandos básicos", desc: "!ping, !info, !ayuda" },
+                      { name: "Moderación", desc: "!ban, !kick, !mute, !warn" },
+                      { name: "Música", desc: lang === "python" ? "wavelink o discord-ext-menus" : "distube o discord-player" },
+                      { name: "Economía", desc: "Sistema de monedas, tienda, inventario" },
+                      { name: "Bienvenida", desc: "Mensaje automático al entrar al servidor" },
+                      { name: "Slash Commands", desc: lang === "python" ? "Usa @bot.slash_command()" : "Usa SlashCommandBuilder" },
+                    ].map(sys => (
+                      <div key={sys.name} className="flex items-start gap-2 p-2 bg-muted/20 rounded border border-border/20">
+                        <span className="text-primary font-bold text-xs shrink-0 mt-0.5">→</span>
+                        <div>
+                          <p className="text-xs font-medium">{sys.name}</p>
+                          <p className="text-xs text-muted-foreground">{sys.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </div>

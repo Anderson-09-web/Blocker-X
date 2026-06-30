@@ -157,7 +157,10 @@ export const CreateBotBody = zod.object({
   "name": zod.string().min(1),
   "description": zod.string().optional(),
   "language": zod.enum(['python', 'javascript']),
-  "mainFile": zod.string().optional()
+  "mainFile": zod.string().optional(),
+  "token": zod.string(),
+  "clientId": zod.string(),
+  "clientSecret": zod.string()
 })
 
 export const CreateBotResponse = zod.object({
@@ -797,7 +800,8 @@ export const ListInviteCodesResponse = zod.array(ListInviteCodesResponseItem)
 export const CreateInviteCodeBody = zod.object({
   "maxUses": zod.number().nullish(),
   "expiresAt": zod.string().nullish(),
-  "customCode": zod.string().nullish()
+  "customCode": zod.string().nullish(),
+  "grantsPremium": zod.boolean().optional()
 })
 
 export const CreateInviteCodeResponse = zod.object({

@@ -8,7 +8,7 @@ const router = Router();
 
 const FREE_LIMIT = 10;
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
-const GROQ_MODEL = "llama-3.1-70b-versatile";
+const GROQ_MODEL = "llama-3.3-70b-versatile";
 
 router.post("/ai/chat", requireAuth, requireInvite, async (req, res): Promise<void> => {
   const user = (req as any).user;

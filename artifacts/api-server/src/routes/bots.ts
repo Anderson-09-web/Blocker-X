@@ -43,7 +43,7 @@ router.get("/bots", requireAuth, requireInvite, async (req, res): Promise<void> 
 
 router.post("/bots", requireAuth, requireInvite, async (req, res): Promise<void> => {
   const user = (req as any).user;
-  const { name, description, language, token } = req.body;
+  const { name, description, language, token, clientId, clientSecret } = req.body;
 
   if (!name || !language) {
     res.status(400).json({ error: "Name and language are required" });
@@ -51,6 +51,18 @@ router.post("/bots", requireAuth, requireInvite, async (req, res): Promise<void>
   }
   if (!["python", "javascript"].includes(language)) {
     res.status(400).json({ error: "Language must be python or javascript" });
+    return;
+  }
+  if (!token) {
+    res.status(400).json({ error: "Bot token is required" });
+    return;
+  }
+  if (!clientId) {
+    res.status(400).json({ error: "Client ID is required" });
+    return;
+  }
+  if (!clientSecret) {
+    res.status(400).json({ error: "Client Secret is required" });
     return;
   }
 
@@ -81,11 +93,17 @@ router.post("/bots", requireAuth, requireInvite, async (req, res): Promise<void>
     req.log.warn({ err, botId }, "Failed to upload default templates to R2");
   }
 
-  if (token) {
+  const envEntries = [
+    { key: "DISCORD_TOKEN", value: token },
+    { key: "DISCORD_CLIENT_ID", value: clientId },
+    { key: "DISCORD_CLIENT_SECRET", value: clientSecret },
+  ];
+
+  for (const entry of envEntries) {
     try {
-      await db.insert(envVarsTable).values({ id: randomUUID(), botId, key: "DISCORD_TOKEN", value: token });
+      await db.insert(envVarsTable).values({ id: randomUUID(), botId, key: entry.key, value: entry.value });
     } catch (err) {
-      req.log.warn({ err }, "Failed to save bot token");
+      req.log.warn({ err }, `Failed to save env var ${entry.key}`);
     }
   }
 
