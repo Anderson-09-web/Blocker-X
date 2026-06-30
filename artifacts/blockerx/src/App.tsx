@@ -62,15 +62,14 @@ const queryClient = new QueryClient({
 
 function ProtectedRoute({ component: Component, adminOnly = false }: { component: React.ComponentType; adminOnly?: boolean }) {
   const { user, isLoading } = useAuth();
-  if (isLoading) return (
+  if (isLoading || !user) return (
     <div className="h-screen flex items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-4">
         <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm text-muted-foreground">Loading...</p>
+        <p className="text-sm text-muted-foreground">Cargando...</p>
       </div>
     </div>
   );
-  if (!user) return null;
   if (user.isBanned) return (
     <div className="h-screen flex items-center justify-center bg-background">
       <div className="text-center">
