@@ -263,6 +263,7 @@ export default function BotDetailPage() {
     const updates: any = {};
     if (settingsName.trim()) updates.name = settingsName.trim();
     if (settingsDesc !== undefined) updates.description = settingsDesc;
+    const isRunning = (bot as any)?.status === "running";
 
     updateBot.mutate({ botId, data: updates }, {
       onSuccess: async () => {
@@ -277,9 +278,18 @@ export default function BotDetailPage() {
             )
           )
         );
-        refresh();
         qc.invalidateQueries({ queryKey: getListEnvVarsQueryKey(botId) });
-        toast({ title: "Configuración guardada. Reinicia el bot para aplicar cambios." });
+
+        if (isRunning) {
+          toast({ title: "Configuración guardada · Aplicando cambios...", description: "El bot se reinicia automáticamente." });
+          restartBot.mutate({ botId }, {
+            onSuccess: () => { refresh(); toast({ title: "✅ Estado aplicado", description: `El bot ahora está como ${BOT_STATUSES.find(s => s.value === settingsStatus)?.label || settingsStatus}` }); },
+            onError: () => { refresh(); toast({ title: "Guardado. Reinicia el bot manualmente si no cambia.", variant: "destructive" }); },
+          });
+        } else {
+          refresh();
+          toast({ title: "✅ Configuración guardada" });
+        }
       },
       onError: () => toast({ title: "Error al guardar configuración", variant: "destructive" }),
     });
@@ -584,7 +594,7 @@ export default function BotDetailPage() {
               <CardHeader><CardTitle className="text-sm">Presencia y Estado</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-xs text-muted-foreground">
-                  Elige un estado por defecto. Se guarda como <code className="bg-muted px-1 rounded">BOT_STATUS</code> — léelo en tu código para configurar la presencia del bot en Discord. Reinicia el bot después de cambiar.
+                  Elige el estado que quieres que muestre tu bot en Discord. Al guardar, el bot se reinicia automáticamente para aplicar el cambio.
                 </p>
                 <div className="space-y-2">
                   {BOT_STATUSES.map(s => (
@@ -626,20 +636,78 @@ export default function BotDetailPage() {
         {/* Guide */}
         <TabsContent value="guide" className="mt-4">
           <div className="space-y-4">
+
+            {/* Section 1: Create files */}
+            <Card className="bg-card/60 border-border/40">
+              <CardHeader>
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <FilePlus className="w-4 h-4 text-primary" />
+                  Cómo crear y organizar archivos
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">Los archivos de tu bot viven en la pestaña <strong className="text-foreground">Files</strong>. Aquí puedes crear, editar y organizar todo tu código.</p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg space-y-2">
+                    <p className="text-sm font-semibold flex items-center gap-2"><FilePlus className="w-4 h-4 text-primary" />Crear un archivo nuevo</p>
+                    <ol className="text-xs text-muted-foreground space-y-1.5 list-none">
+                      <li className="flex gap-2"><span className="bg-primary/20 text-primary rounded-full w-4 h-4 flex items-center justify-center shrink-0 font-bold text-[10px]">1</span>Ve a la pestaña <strong className="text-foreground">Files</strong></li>
+                      <li className="flex gap-2"><span className="bg-primary/20 text-primary rounded-full w-4 h-4 flex items-center justify-center shrink-0 font-bold text-[10px]">2</span>Haz clic en el botón <strong className="text-foreground">Nuevo</strong> (arriba en el explorador)</li>
+                      <li className="flex gap-2"><span className="bg-primary/20 text-primary rounded-full w-4 h-4 flex items-center justify-center shrink-0 font-bold text-[10px]">3</span>Escribe el nombre: <code className="bg-black/20 px-1 rounded font-mono">{lang === "python" ? "economia.py" : "economia.js"}</code></li>
+                      <li className="flex gap-2"><span className="bg-primary/20 text-primary rounded-full w-4 h-4 flex items-center justify-center shrink-0 font-bold text-[10px]">4</span>Escribe el contenido inicial y haz clic en <strong className="text-foreground">Crear Archivo</strong></li>
+                      <li className="flex gap-2"><span className="bg-primary/20 text-primary rounded-full w-4 h-4 flex items-center justify-center shrink-0 font-bold text-[10px]">5</span>Haz <strong className="text-foreground">Deploy</strong> para que el archivo entre en producción</li>
+                    </ol>
+                  </div>
+                  <div className="p-3 bg-muted/30 border border-border/30 rounded-lg space-y-2">
+                    <p className="text-sm font-semibold flex items-center gap-2"><FolderPlus className="w-4 h-4" />Organizar en carpetas</p>
+                    <p className="text-xs text-muted-foreground">Puedes crear carpetas para organizar mejor tu bot. Por ejemplo:</p>
+                    <div className="font-mono text-xs bg-black/20 rounded p-2 space-y-0.5 text-green-300/80">
+                      {lang === "python" ? (
+                        <>
+                          <p>📄 main.py <span className="text-muted-foreground">← archivo principal</span></p>
+                          <p>📄 requirements.txt <span className="text-muted-foreground">← dependencias</span></p>
+                          <p>📁 cogs/</p>
+                          <p>  📄 economia.py</p>
+                          <p>  📄 moderacion.py</p>
+                          <p>  📄 musica.py</p>
+                        </>
+                      ) : (
+                        <>
+                          <p>📄 index.js <span className="text-muted-foreground">← archivo principal</span></p>
+                          <p>📄 package.json <span className="text-muted-foreground">← dependencias</span></p>
+                          <p>📁 commands/</p>
+                          <p>  📄 economia.js</p>
+                          <p>  📄 moderacion.js</p>
+                          <p>  📄 musica.js</p>
+                        </>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Para crear una carpeta, haz clic en <strong className="text-foreground">Carpeta</strong> en la pestaña Files.</p>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-yellow-500/5 border border-yellow-500/20 rounded-lg">
+                  <p className="text-xs text-yellow-400 font-medium mb-1">⚠️ Recuerda siempre</p>
+                  <p className="text-xs text-muted-foreground">Editar un archivo en Files y guardarlo <strong className="text-foreground">no</strong> actualiza el bot que está corriendo. Necesitas hacer <strong className="text-foreground">Deploy</strong> (botón arriba) para que los cambios se apliquen.</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Section 2: Add commands */}
             <Card className="bg-card/60 border-border/40">
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
                   <BookOpen className="w-4 h-4 text-primary" />
-                  Cómo agregar comandos y sistemas a tu bot
+                  Cómo agregar comandos a tu bot
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Steps */}
+              <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {[
-                    { n: 1, title: "Edita el archivo principal", desc: lang === "python" ? "Abre main.py en la pestaña Files y escribe tus comandos" : "Abre index.js en la pestaña Files y escribe tus comandos" },
-                    { n: 2, title: "Agrega dependencias", desc: lang === "python" ? "Agrega librerías a requirements.txt (ej: aiohttp, pillow)" : "Agrega paquetes a package.json (ej: axios, moment)" },
-                    { n: 3, title: "Despliega y prueba", desc: "Presiona Deploy arriba y luego prueba tus comandos en Discord" },
+                    { n: 1, title: lang === "python" ? "Abre main.py" : "Abre index.js", desc: "Ve a Files y selecciona tu archivo principal para editarlo" },
+                    { n: 2, title: "Agrega el comando", desc: lang === "python" ? "Crea una función con @bot.command() y el nombre del comando" : "Usa client.on('messageCreate') o SlashCommandBuilder" },
+                    { n: 3, title: "Deploy y prueba", desc: "Presiona Deploy arriba y espera que inicie. Prueba el comando en tu servidor de Discord" },
                   ].map(step => (
                     <div key={step.n} className="p-3 bg-muted/30 rounded-lg border border-border/30">
                       <div className="w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center mb-2">{step.n}</div>
@@ -649,67 +717,71 @@ export default function BotDetailPage() {
                   ))}
                 </div>
 
-                {/* Code example */}
                 <div>
-                  <p className="text-sm font-medium mb-2 flex items-center gap-2">
-                    📋 Código de ejemplo completo ({lang === "python" ? "Python" : "JavaScript"})
-                  </p>
-                  <div className="relative">
-                    <pre className="bg-background/70 border border-border/40 rounded-lg p-4 text-xs font-mono overflow-x-auto text-foreground/80 leading-relaxed">
-                      {lang === "python" ? PYTHON_COMMANDS_GUIDE : JS_COMMANDS_GUIDE}
-                    </pre>
-                  </div>
-                </div>
-
-                {/* Tips */}
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">💡 Tips importantes</p>
-                  <div className="space-y-2">
-                    {(lang === "python" ? [
-                      { icon: "🔑", text: "Tu token ya está guardado como DISCORD_TOKEN — no lo escribas en el código, usa os.getenv('DISCORD_TOKEN')" },
-                      { icon: "📦", text: "Para instalar dependencias: agrégalas a requirements.txt y haz Deploy" },
-                      { icon: "🔄", text: "Cambios en el código requieren hacer Deploy para aplicarse" },
-                      { icon: "🔐", text: "Guarda tus claves de API en la pestaña Environment, nunca en el código" },
-                      { icon: "📡", text: "Necesitas activar los Intents en Discord Developer Portal → Tu App → Bot → Privileged Gateway Intents" },
-                    ] : [
-                      { icon: "🔑", text: "Tu token ya está guardado como DISCORD_TOKEN — usa process.env.DISCORD_TOKEN en lugar de escribirlo directamente" },
-                      { icon: "📦", text: "Para instalar paquetes: agrégalos a package.json y haz Deploy" },
-                      { icon: "🔄", text: "Cambios en el código requieren hacer Deploy para aplicarse" },
-                      { icon: "🔐", text: "Guarda tus claves de API en la pestaña Environment, nunca en el código" },
-                      { icon: "📡", text: "Necesitas activar MessageContent Intent en Discord Developer Portal → Tu App → Bot → Privileged Gateway Intents" },
-                    ]).map((tip, i) => (
-                      <div key={i} className="flex gap-3 p-2.5 bg-muted/20 rounded-md border border-border/20">
-                        <span className="shrink-0 text-base">{tip.icon}</span>
-                        <p className="text-xs text-muted-foreground">{tip.text}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Quick commands reference */}
-                <div>
-                  <p className="text-sm font-medium mb-2">⚡ Referencia rápida de sistemas</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {[
-                      { name: "Comandos básicos", desc: "!ping, !info, !ayuda" },
-                      { name: "Moderación", desc: "!ban, !kick, !mute, !warn" },
-                      { name: "Música", desc: lang === "python" ? "wavelink o discord-ext-menus" : "distube o discord-player" },
-                      { name: "Economía", desc: "Sistema de monedas, tienda, inventario" },
-                      { name: "Bienvenida", desc: "Mensaje automático al entrar al servidor" },
-                      { name: "Slash Commands", desc: lang === "python" ? "Usa @bot.slash_command()" : "Usa SlashCommandBuilder" },
-                    ].map(sys => (
-                      <div key={sys.name} className="flex items-start gap-2 p-2 bg-muted/20 rounded border border-border/20">
-                        <span className="text-primary font-bold text-xs shrink-0 mt-0.5">→</span>
-                        <div>
-                          <p className="text-xs font-medium">{sys.name}</p>
-                          <p className="text-xs text-muted-foreground">{sys.desc}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <p className="text-sm font-medium mb-2">📋 Código de ejemplo — cópialo a tu {lang === "python" ? "main.py" : "index.js"}</p>
+                  <pre className="bg-background/70 border border-border/40 rounded-lg p-4 text-xs font-mono overflow-x-auto text-green-300/80 leading-relaxed">
+                    {lang === "python" ? PYTHON_COMMANDS_GUIDE : JS_COMMANDS_GUIDE}
+                  </pre>
                 </div>
               </CardContent>
             </Card>
+
+            {/* Section 3: Tips */}
+            <Card className="bg-card/60 border-border/40">
+              <CardHeader><CardTitle className="text-sm">💡 Cosas importantes que debes saber</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {(lang === "python" ? [
+                  { icon: "🔑", title: "Tu token está seguro", text: "No necesitas escribir tu token en el código. Ya está guardado. Usa: os.getenv('DISCORD_TOKEN')" },
+                  { icon: "📦", title: "Instalar librerías", text: "Crea un archivo requirements.txt y escribe las librerías (una por línea). Ej: aiohttp, pillow, wavelink. Luego haz Deploy." },
+                  { icon: "📡", title: "Activa los Intents", text: "Si tu bot no ve mensajes, entra a Discord Developer Portal → Tu App → Bot → activa 'Message Content Intent' y 'Server Members Intent'." },
+                  { icon: "🔐", title: "Claves de API", text: "Guarda tus claves (YouTube API, etc.) en la pestaña Environment. Así no las escribes directo en el código." },
+                  { icon: "🧩", title: "Usa Cogs para organizar", text: "Si tu bot crece mucho, divide los comandos en archivos separados (Cogs). Crea una carpeta 'cogs/' y agrega los archivos ahí." },
+                ] : [
+                  { icon: "🔑", title: "Tu token está seguro", text: "No necesitas escribir tu token en el código. Ya está guardado. Usa: process.env.DISCORD_TOKEN" },
+                  { icon: "📦", title: "Instalar paquetes", text: "Edita package.json y agrega los paquetes en 'dependencies'. Ej: \"axios\": \"*\". Luego haz Deploy." },
+                  { icon: "📡", title: "Activa los Intents", text: "Si tu bot no ve mensajes, entra a Discord Developer Portal → Tu App → Bot → activa 'Message Content Intent'." },
+                  { icon: "🔐", title: "Claves de API", text: "Guarda tus claves en la pestaña Environment. Úsalas con process.env.MI_CLAVE." },
+                  { icon: "🧩", title: "Organiza en comandos", text: "Si tu bot crece, divide los comandos en archivos separados en una carpeta 'commands/'. Usa require() o import para cargarlos." },
+                ]).map((tip, i) => (
+                  <div key={i} className="flex gap-3 p-3 bg-muted/20 rounded-lg border border-border/20">
+                    <span className="shrink-0 text-lg">{tip.icon}</span>
+                    <div>
+                      <p className="text-xs font-semibold text-foreground">{tip.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{tip.text}</p>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* Section 4: Systems reference */}
+            <Card className="bg-card/60 border-border/40">
+              <CardHeader><CardTitle className="text-sm">⚡ ¿Qué puedo agregar a mi bot?</CardTitle></CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {[
+                    { name: "Comandos básicos", desc: "!ping, !info, !ayuda — el punto de partida de todo bot", color: "text-blue-400" },
+                    { name: "Moderación", desc: "!ban, !kick, !mute, !warn, !clear — para mantener el orden", color: "text-red-400" },
+                    { name: "Economía", desc: "Sistema de monedas, balance, tienda, inventario, recompensas", color: "text-yellow-400" },
+                    { name: "Bienvenida", desc: "Mensaje automático cuando alguien entra al servidor", color: "text-green-400" },
+                    { name: "Música", desc: lang === "python" ? "Reproducir música con wavelink o yt-dlp" : "Música con distube o discord-player", color: "text-purple-400" },
+                    { name: "Slash Commands", desc: lang === "python" ? "Comandos modernos con @bot.tree.command()" : "Comandos modernos con SlashCommandBuilder", color: "text-primary" },
+                    { name: "Niveles y XP", desc: "Sistema de experiencia y rangos por actividad en el servidor", color: "text-orange-400" },
+                    { name: "Tickets de soporte", desc: "Sistema para abrir tickets privados de soporte", color: "text-cyan-400" },
+                  ].map(sys => (
+                    <div key={sys.name} className="flex items-start gap-3 p-2.5 bg-muted/20 rounded-lg border border-border/20">
+                      <span className={`font-bold text-sm shrink-0 mt-0.5 ${sys.color}`}>→</span>
+                      <div>
+                        <p className="text-xs font-semibold">{sys.name}</p>
+                        <p className="text-xs text-muted-foreground">{sys.desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-3 text-center">💬 Usa la <strong className="text-foreground">IA</strong> (menú lateral) para que te ayude a crear cualquiera de estos sistemas automáticamente.</p>
+              </CardContent>
+            </Card>
+
           </div>
         </TabsContent>
       </Tabs>
