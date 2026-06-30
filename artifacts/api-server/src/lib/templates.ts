@@ -1,37 +1,64 @@
 export const PYTHON_MAIN = `import discord
 from discord.ext import commands
 import os
-from dotenv import load_dotenv
+import glob
 
-load_dotenv()
-
+# ─── CONFIGURACIÓN ────────────────────────────────────────────────────────────
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
+intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# Estado de Discord (se configura en la pestaña Settings del panel)
+STATUS_MAP = {
+    "online": discord.Status.online,
+    "idle": discord.Status.idle,
+    "dnd": discord.Status.dnd,
+    "invisible": discord.Status.invisible,
+}
+
+# ─── EVENTO READY ─────────────────────────────────────────────────────────────
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
-    print(f"Connected to {len(bot.guilds)} guild(s)")
+    print(f"Bot en línea: {bot.user}")
 
+    # Aplicar estado configurado en el panel
+    status_key = os.getenv("BOT_STATUS", "online")
+    status = STATUS_MAP.get(status_key, discord.Status.online)
+    await bot.change_presence(status=status)
+    print(f"Estado: {status_key}")
+
+    # Cargar automáticamente todos los archivos Python de la carpeta cogs/
+    # (cada archivo debe tener una función async def setup(bot):)
+    for filepath in glob.glob("cogs/*.py"):
+        ext_name = filepath.replace("/", ".").replace("\\\\", ".")[:-3]
+        try:
+            await bot.load_extension(ext_name)
+            print(f"✅ Cargado: {ext_name}")
+        except Exception as e:
+            print(f"❌ Error en {ext_name}: {e}")
+
+    # También cargar archivos en la carpeta sistemas/ si existe
+    for filepath in glob.glob("sistemas/*.py"):
+        ext_name = filepath.replace("/", ".").replace("\\\\", ".")[:-3]
+        try:
+            await bot.load_extension(ext_name)
+            print(f"✅ Cargado: {ext_name}")
+        except Exception as e:
+            print(f"❌ Error en {ext_name}: {e}")
+
+# ─── COMANDOS BASE ─────────────────────────────────────────────────────────────
 @bot.command()
 async def ping(ctx):
-    """Check bot latency"""
-    await ctx.send(f"Pong! Latency: {round(bot.latency * 1000)}ms")
-
-@bot.command()
-async def hello(ctx):
-    """Say hello"""
-    await ctx.send(f"Hello, {ctx.author.mention}!")
+    await ctx.send(f"🏓 Pong! ({round(bot.latency * 1000)}ms)")
 
 @bot.command()
 async def info(ctx):
-    """Show bot info"""
     embed = discord.Embed(title="Bot Info", color=0x3b82f6)
     embed.add_field(name="Bot", value=bot.user.name, inline=True)
-    embed.add_field(name="Guilds", value=str(len(bot.guilds)), inline=True)
+    embed.add_field(name="Servidores", value=str(len(bot.guilds)), inline=True)
     await ctx.send(embed=embed)
 
 @bot.event

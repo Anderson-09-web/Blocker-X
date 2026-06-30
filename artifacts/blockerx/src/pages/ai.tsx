@@ -118,7 +118,7 @@ export default function AiPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const selectedBot = (bots as any[])?.find((b: any) => b.id === selectedBotId);
-  const { data: fileList } = useListFiles(selectedBotId !== "none" ? selectedBotId : "", { dirPath: "/" }, { enabled: selectedBotId !== "none" });
+  const { data: fileList } = useListFiles(selectedBotId !== "none" ? selectedBotId : "none", {}, { query: { enabled: selectedBotId !== "none" } });
   const allFiles = (fileList as any[])?.filter((f: any) => f.type === "file") || [];
 
   useEffect(() => {

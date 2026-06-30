@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Square, RotateCcw, Rocket, Plus, Trash2, Save, Folder, FileText, ChevronLeft, Settings, BookOpen, FilePlus, FolderPlus, X } from "lucide-react";
+import { Play, Square, RotateCcw, Rocket, Plus, Trash2, Save, Folder, FileText, ChevronLeft, Settings, BookOpen, FilePlus, FolderPlus, X, Loader2, RefreshCw, ChevronRight } from "lucide-react";
 import { Link } from "wouter";
 
 function StatusBadge({ status }: { status: string }) {
@@ -129,8 +129,28 @@ export default function BotDetailPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
 
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [fileContent, setFileContent] = useState("");
+  const [newEnvKey, setNewEnvKey] = useState("");
+  const [newEnvVal, setNewEnvVal] = useState("");
+  const [showNewFile, setShowNewFile] = useState(false);
+  const [newFileName, setNewFileName] = useState("");
+  const [newFileContent, setNewFileContent] = useState("");
+  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [currentFolder, setCurrentFolder] = useState<string | null>(null);
+  const [settingsName, setSettingsName] = useState("");
+  const [settingsDesc, setSettingsDesc] = useState("");
+  const [settingsAvatar, setSettingsAvatar] = useState("");
+  const [settingsStatus, setSettingsStatus] = useState("online");
+  const [fetchingAvatar, setFetchingAvatar] = useState(false);
+
   const { data: bot, isLoading } = useGetBot(botId, { query: { queryKey: getGetBotQueryKey(botId) } });
-  const { data: files } = useListFiles(botId, {}, { query: { queryKey: getListFilesQueryKey(botId) } });
+  const { data: files, refetch: refetchFiles } = useListFiles(
+    botId,
+    currentFolder ? { dirPath: currentFolder } : {},
+    { query: { queryKey: [...getListFilesQueryKey(botId), currentFolder || "root"] } }
+  );
   const { data: logs } = useGetBotLogs(botId, {}, { query: { queryKey: getGetBotLogsQueryKey(botId), refetchInterval: 3000 } });
   const { data: envVars } = useListEnvVars(botId, { query: { queryKey: getListEnvVarsQueryKey(botId) } });
   const { data: deployments } = useListDeployments();
@@ -145,22 +165,6 @@ export default function BotDetailPage() {
   const writeFile = useWriteFile();
   const uploadFile = useUploadFile();
   const createFolder = useCreateFolder();
-
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [fileContent, setFileContent] = useState("");
-  const [newEnvKey, setNewEnvKey] = useState("");
-  const [newEnvVal, setNewEnvVal] = useState("");
-
-  const [showNewFile, setShowNewFile] = useState(false);
-  const [newFileName, setNewFileName] = useState("");
-  const [newFileContent, setNewFileContent] = useState("");
-  const [showNewFolder, setShowNewFolder] = useState(false);
-  const [newFolderName, setNewFolderName] = useState("");
-
-  const [settingsName, setSettingsName] = useState("");
-  const [settingsDesc, setSettingsDesc] = useState("");
-  const [settingsAvatar, setSettingsAvatar] = useState("");
-  const [settingsStatus, setSettingsStatus] = useState("online");
 
   const { data: fileData } = useReadFile(botId, { filePath: selectedFile! }, {
     query: { enabled: !!selectedFile, queryKey: ["readFile", botId, selectedFile] }
@@ -217,12 +221,30 @@ export default function BotDetailPage() {
     });
   };
 
+  const handleFolderClick = (folder: any) => {
+    const r2Prefix = (bot as any)?.r2Prefix || "";
+    const base = r2Prefix.endsWith("/") ? r2Prefix : r2Prefix + "/";
+    const relativePath = folder.path.replace(base, "").replace(/\/$/, "");
+    setCurrentFolder(relativePath);
+    setSelectedFile(null);
+  };
+
+  const handleGoToFolder = (parts: string[], index: number) => {
+    if (index < 0) {
+      setCurrentFolder(null);
+    } else {
+      setCurrentFolder(parts.slice(0, index + 1).join("/"));
+    }
+    setSelectedFile(null);
+  };
+
   const handleCreateFile = () => {
     if (!newFileName.trim()) return;
     const name = newFileName.trim();
-    uploadFile.mutate({ botId, data: { path: "/", name, content: newFileContent, encoding: "utf-8" } }, {
+    const filePath = currentFolder ? `/${currentFolder}` : "/";
+    uploadFile.mutate({ botId, data: { path: filePath, name, content: newFileContent, encoding: "utf-8" } }, {
       onSuccess: (f: any) => {
-        qc.invalidateQueries({ queryKey: getListFilesQueryKey(botId) });
+        refetchFiles();
         toast({ title: `Archivo "${name}" creado` });
         setSelectedFile(f.path);
         setFileContent(newFileContent);
@@ -257,6 +279,35 @@ export default function BotDetailPage() {
       },
       onError: () => toast({ title: "Error al guardar", variant: "destructive" }),
     });
+  };
+
+  const handleFetchAvatar = async () => {
+    const tokenVar = (envVars as any[])?.find((v: any) => v.key === "DISCORD_TOKEN");
+    if (!tokenVar?.value) {
+      toast({ title: "No hay DISCORD_TOKEN guardado en Environment", variant: "destructive" });
+      return;
+    }
+    setFetchingAvatar(true);
+    try {
+      const res = await fetch("/api/bots/verify-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ token: tokenVar.value }),
+      });
+      if (!res.ok) throw new Error("Error");
+      const data = await res.json();
+      if (data.avatar) {
+        setSettingsAvatar(data.avatar);
+        toast({ title: `✅ Avatar obtenido`, description: `Bot: ${data.username}` });
+      } else {
+        toast({ title: "El bot no tiene avatar en Discord" });
+      }
+    } catch {
+      toast({ title: "No se pudo obtener el avatar", variant: "destructive" });
+    } finally {
+      setFetchingAvatar(false);
+    }
   };
 
   const handleSaveSettings = () => {
@@ -417,28 +468,56 @@ export default function BotDetailPage() {
                       onClick={() => { setShowNewFile(true); setShowNewFolder(false); }}>
                       <FilePlus className="w-3.5 h-3.5" />Nuevo
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:bg-accent/30"
-                      onClick={() => { setShowNewFolder(true); setShowNewFile(false); }}>
-                      <FolderPlus className="w-3.5 h-3.5" />Carpeta
-                    </Button>
+                    {!currentFolder && (
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:bg-accent/30"
+                        onClick={() => { setShowNewFolder(true); setShowNewFile(false); }}>
+                        <FolderPlus className="w-3.5 h-3.5" />Carpeta
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="p-0">
+                {/* Breadcrumb navigation */}
+                <div className="px-3 py-1.5 flex items-center gap-1 text-xs border-b border-border/30 bg-muted/10 min-h-[30px]">
+                  <button onClick={() => handleGoToFolder([], -1)} className={`hover:text-foreground transition-colors ${!currentFolder ? "text-foreground font-medium" : "text-primary hover:underline"}`}>
+                    📁 Raíz
+                  </button>
+                  {currentFolder && currentFolder.split("/").map((part, i, arr) => (
+                    <span key={i} className="flex items-center gap-1">
+                      <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                      <button
+                        onClick={() => handleGoToFolder(arr, i)}
+                        className={i === arr.length - 1 ? "text-foreground font-medium" : "text-primary hover:underline"}>
+                        {part}
+                      </button>
+                    </span>
+                  ))}
+                </div>
                 <div className="min-h-48 divide-y divide-border/30">
-                  {(!files || (files as any[]).length === 0) && (
+                  {(!files || (files as any[]).filter((f: any) => f.name !== ".gitkeep").length === 0) && (
                     <div className="p-4 text-center space-y-2">
-                      <p className="text-xs text-muted-foreground">Sin archivos aún.</p>
+                      <p className="text-xs text-muted-foreground">{currentFolder ? "Carpeta vacía." : "Sin archivos aún."}</p>
                       <Button size="sm" variant="outline" className="text-xs h-7 gap-1.5" onClick={() => setShowNewFile(true)}>
-                        <FilePlus className="w-3 h-3" />Crear primer archivo
+                        <FilePlus className="w-3 h-3" />{currentFolder ? "Crear archivo aquí" : "Crear primer archivo"}
                       </Button>
                     </div>
                   )}
-                  {(files as any[])?.map((f: any) => (
-                    <button key={f.path} onClick={() => { if (f.type !== "directory") { setSelectedFile(f.path); setFileContent(""); } }}
-                      className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-accent/30 transition-colors text-left ${selectedFile === f.path ? "bg-primary/10 text-primary" : "text-muted-foreground"} ${f.type === "directory" ? "cursor-default" : ""}`}>
-                      {f.type === "directory" ? <Folder className="w-3.5 h-3.5 shrink-0 text-yellow-400" /> : <FileText className="w-3.5 h-3.5 shrink-0" />}
-                      <span className="truncate">{f.name}</span>
+                  {(files as any[])?.filter((f: any) => f.name !== ".gitkeep").map((f: any) => (
+                    <button key={f.path} onClick={() => {
+                      if (f.type === "directory") {
+                        handleFolderClick(f);
+                      } else {
+                        setSelectedFile(f.path);
+                        setFileContent("");
+                      }
+                    }}
+                      className={`w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-accent/30 transition-colors text-left ${selectedFile === f.path ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}>
+                      {f.type === "directory"
+                        ? <Folder className="w-3.5 h-3.5 shrink-0 text-yellow-400" />
+                        : <FileText className="w-3.5 h-3.5 shrink-0" />}
+                      <span className="truncate flex-1">{f.name}</span>
+                      {f.type === "directory" && <ChevronRight className="w-3 h-3 shrink-0 opacity-40" />}
                     </button>
                   ))}
                 </div>
@@ -583,9 +662,14 @@ export default function BotDetailPage() {
                 </div>
                 <div>
                   <Label htmlFor="bot-avatar">URL del Avatar</Label>
-                  <Input id="bot-avatar" value={settingsAvatar} onChange={e => setSettingsAvatar(e.target.value)}
-                    placeholder="https://example.com/avatar.png" className="mt-1" />
-                  <p className="text-xs text-muted-foreground mt-1">Se guarda como variable BOT_AVATAR_URL — úsala en tu código</p>
+                  <div className="flex gap-2 mt-1">
+                    <Input id="bot-avatar" value={settingsAvatar} onChange={e => setSettingsAvatar(e.target.value)}
+                      placeholder="https://cdn.discordapp.com/avatars/..." className="flex-1" />
+                    <Button size="sm" variant="outline" onClick={handleFetchAvatar} disabled={fetchingAvatar} title="Obtener avatar del token de Discord" className="shrink-0">
+                      {fetchingAvatar ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Haz clic en 🔄 para obtener el avatar automáticamente del token de Discord</p>
                 </div>
               </CardContent>
             </Card>
@@ -753,6 +837,63 @@ export default function BotDetailPage() {
                 ))}
               </CardContent>
             </Card>
+
+            {/* Section 3.5: Loading extra files / cogs */}
+            {lang === "python" && (
+              <Card className="bg-card/60 border-border/40 border-primary/20">
+                <CardHeader>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <FolderPlus className="w-4 h-4 text-primary" />
+                    Cómo usar archivos en carpetas (Cogs/Sistemas)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Si creaste una carpeta <code className="bg-black/20 px-1 rounded font-mono text-xs">cogs/</code> o <code className="bg-black/20 px-1 rounded font-mono text-xs">sistemas/</code> y pusiste tu código ahí,
+                    el <strong className="text-foreground">main.py ya los carga automáticamente</strong> al iniciar — pero solo si el archivo tiene la función <code className="bg-black/20 px-1 rounded font-mono text-xs">setup(bot)</code>.
+                  </p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg space-y-2">
+                      <p className="text-xs font-semibold text-primary">✅ Estructura correcta de un Cog</p>
+                      <pre className="text-xs font-mono bg-black/20 rounded p-2 text-green-300/80 leading-relaxed overflow-x-auto">{`# cogs/economia.py o sistemas/panel.py
+import discord
+from discord.ext import commands
+
+class Economia(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    @commands.command(name="panel")
+    async def panel(self, ctx):
+        await ctx.send("¡Panel activo!")
+
+# ⬇️ OBLIGATORIO: esta función carga el Cog
+async def setup(bot):
+    await bot.add_cog(Economia(bot))`}</pre>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="p-3 bg-yellow-500/5 border border-yellow-500/20 rounded-lg">
+                        <p className="text-xs text-yellow-400 font-medium mb-1">⚠️ ¿Por qué no funciona mi comando?</p>
+                        <ul className="text-xs text-muted-foreground space-y-1.5">
+                          <li>• El archivo está en <code className="bg-black/20 px-1 rounded font-mono">sistemas/</code> o <code className="bg-black/20 px-1 rounded font-mono">cogs/</code> ✓</li>
+                          <li>• Pero le falta la función <code className="bg-black/20 px-1 rounded font-mono">async def setup(bot):</code> ❌</li>
+                          <li>• Sin esa función, el bot no puede cargarlo</li>
+                        </ul>
+                      </div>
+                      <div className="p-3 bg-muted/30 border border-border/30 rounded-lg">
+                        <p className="text-xs font-semibold mb-1">📋 Pasos para que funcione:</p>
+                        <ol className="text-xs text-muted-foreground space-y-1">
+                          <li>1. Crea el archivo dentro de <code className="bg-black/20 px-1 rounded font-mono">cogs/</code> o <code className="bg-black/20 px-1 rounded font-mono">sistemas/</code></li>
+                          <li>2. Agrega la función <code className="bg-black/20 px-1 rounded font-mono">async def setup(bot):</code> al final</li>
+                          <li>3. Haz <strong className="text-foreground">Deploy</strong> → el bot cargará el archivo automáticamente</li>
+                        </ol>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Section 4: Systems reference */}
             <Card className="bg-card/60 border-border/40">

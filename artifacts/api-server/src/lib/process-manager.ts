@@ -195,19 +195,30 @@ async function spawnBotProcess(
         pandas: "pandas",
       };
 
-      // Read main file to detect imports
-      const mainPath = path.join(workDir, mainFile);
-      let mainContent = "";
-      if (existsSync(mainPath)) {
-        mainContent = readFileSync(mainPath, "utf-8");
-      }
-
+      // Read ALL Python files to detect imports (not just main file)
       const detected = new Set<string>(["discord.py"]);
-      for (const [imp, pkg] of Object.entries(IMPORT_TO_PKG)) {
-        if (new RegExp(`(^|\\n)\\s*(import ${imp}|from ${imp})`, "m").test(mainContent)) {
-          detected.add(pkg);
-        }
+      const { readdirSync } = await import("fs");
+      function scanPyFiles(dir: string, depth = 0): void {
+        if (depth > 3) return;
+        try {
+          const entries = readdirSync(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            if (entry.isDirectory() && !entry.name.startsWith(".") && entry.name !== "__pycache__") {
+              scanPyFiles(path.join(dir, entry.name), depth + 1);
+            } else if (entry.isFile() && entry.name.endsWith(".py")) {
+              try {
+                const content = readFileSync(path.join(dir, entry.name), "utf-8");
+                for (const [imp, pkg] of Object.entries(IMPORT_TO_PKG)) {
+                  if (new RegExp(`(^|\\n)\\s*(import ${imp}|from ${imp})`, "m").test(content)) {
+                    detected.add(pkg);
+                  }
+                }
+              } catch { /* skip unreadable files */ }
+            }
+          }
+        } catch { /* skip unreadable dirs */ }
       }
+      scanPyFiles(workDir);
 
       // Also install from requirements.txt if it exists
       const reqPath = path.join(workDir, "requirements.txt");
