@@ -108,6 +108,22 @@ router.put("/files/:botId/write", requireAuth, requireInvite, async (req, res): 
   }
 });
 
+router.delete("/files/:botId/rmdir", requireAuth, requireInvite, async (req, res): Promise<void> => {
+  const user = (req as any).user;
+  const botId = Array.isArray(req.params.botId) ? req.params.botId[0] : req.params.botId;
+  const { path: dirPath } = req.body;
+  const prefix = await getBotR2Prefix(botId, user.id);
+  if (!prefix) { res.status(404).json({ error: "Bot not found" }); return; }
+  if (!dirPath?.startsWith(prefix)) { res.status(403).json({ error: "Forbidden" }); return; }
+  try {
+    await r2DeletePrefix(dirPath);
+    res.json({ message: "Folder deleted" });
+  } catch (err) {
+    req.log.error({ err }, "Rmdir failed");
+    res.status(500).json({ error: "Folder deletion failed" });
+  }
+});
+
 router.post("/files/:botId/mkdir", requireAuth, requireInvite, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const botId = Array.isArray(req.params.botId) ? req.params.botId[0] : req.params.botId;
