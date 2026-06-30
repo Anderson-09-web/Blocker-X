@@ -12,9 +12,12 @@
 export function getBxInjectPy(): string {
   return `\
 # _bx_inject.py — generado por BlockerX, no editar
-# Parcha discord.Client.__init__ para aplicar BOT_STATUS al conectar.
+# Parcha discord.Client.dispatch para aplicar BOT_STATUS cuando el bot está listo.
+# Este enfoque no toca __init__ ni add_listener, por lo que es compatible con
+# discord.Client, commands.Bot, py-cord y cualquier subclase.
 import os as _os
 import sys as _sys
+import asyncio as _asyncio
 
 try:
     import discord as _d
@@ -29,45 +32,30 @@ try:
         _os.getenv("BOT_STATUS", "online"), _d.Status.online
     )
 
-    _bx_orig_init = _d.Client.__init__
+    _bx_orig_dispatch = _d.Client.dispatch
 
-    def _bx_patched_init(self, *args, **kwargs):
-        _bx_orig_init(self, *args, **kwargs)
+    def _bx_patched_dispatch(self, event, *args, **kwargs):
+        _bx_orig_dispatch(self, event, *args, **kwargs)
+        if event == "ready":
+            async def _apply_status():
+                try:
+                    await _asyncio.sleep(1)
+                    await self.change_presence(status=_bx_target)
+                    print(
+                        f"[BlockerX] Status aplicado: {_bx_target.value}",
+                        file=_sys.stderr, flush=True,
+                    )
+                except Exception as _e:
+                    print(f"[BlockerX] Status error: {_e}", file=_sys.stderr, flush=True)
 
-        # Idempotente: si ya se registró en esta instancia, salir.
-        if getattr(self, "_bx_status_registered", False):
-            return
-        self._bx_status_registered = True
-
-        _bx_client = self
-
-        async def _bx_on_ready():
             try:
-                await _bx_client.change_presence(status=_bx_target)
-                print(
-                    f"[BlockerX] Status aplicado: {_bx_target.value}",
-                    file=_sys.stderr, flush=True,
-                )
+                loop = _asyncio.get_event_loop()
+                loop.create_task(_apply_status())
             except Exception as _e:
-                print(f"[BlockerX] Status error: {_e}", file=_sys.stderr, flush=True)
+                print(f"[BlockerX] No se pudo programar el status: {_e}", file=_sys.stderr, flush=True)
 
-        if callable(getattr(self, "add_listener", None)):
-            # discord.Client v2+ y commands.Bot tienen add_listener.
-            # Es aditivo: no reemplaza el on_ready del usuario.
-            self.add_listener(_bx_on_ready, "on_ready")
-        else:
-            # Fallback para versiones antiguas: encadenar con el handler existente.
-            _prev_on_ready = getattr(self, "on_ready", None)
-
-            async def _bx_on_ready_chained():
-                if callable(_prev_on_ready):
-                    await _prev_on_ready()
-                await _bx_on_ready()
-
-            self.on_ready = _bx_on_ready_chained
-
-    _d.Client.__init__ = _bx_patched_init
-    print("[BlockerX] Patch de status cargado.", file=_sys.stderr, flush=True)
+    _d.Client.dispatch = _bx_patched_dispatch
+    print("[BlockerX] Parche de estado cargado.", file=_sys.stderr, flush=True)
 
 except Exception as _bx_err:
     print(f"[BlockerX] Patch omitido: {_bx_err}", file=_sys.stderr, flush=True)

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, botsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth, requireInvite } from "../lib/auth-middleware";
-import { r2ListFiles, r2ReadFile, r2WriteFile, r2DeleteFile, r2RenameFile } from "../lib/r2";
+import { r2ListFiles, r2ReadFile, r2WriteFile, r2DeleteFile, r2RenameFile, r2DeletePrefix } from "../lib/r2";
 
 const router = Router();
 
