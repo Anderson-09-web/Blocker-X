@@ -45,17 +45,30 @@ router.post("/invite/redeem", requireAuth, async (req, res): Promise<void> => {
 
   await db.update(inviteCodesTable).set({ usesCount: invite.usesCount + 1 }).where(eq(inviteCodesTable.id, invite.id));
   await db.insert(redeemedCodesTable).values({ id: randomUUID(), codeId: invite.id, userId: user.id });
-  await db.update(usersTable).set({ hasInvite: true }).where(eq(usersTable.id, user.id));
 
+  const updates: Record<string, any> = { hasInvite: true };
+  if ((invite as any).grantsPremium) {
+    updates.plan = "premium";
+  }
+  await db.update(usersTable).set(updates).where(eq(usersTable.id, user.id));
+
+  const isPremium = !!(invite as any).grantsPremium;
   await createNotification({
     userId: user.id,
-    title: "Access Granted",
-    message: "Your invitation code was accepted. Welcome to Blocker X!",
+    title: isPremium ? "Premium Activated!" : "Access Granted",
+    message: isPremium
+      ? "Your premium key was accepted. Enjoy unlimited bots, AI, and more!"
+      : "Your invitation code was accepted. Welcome to Blocker X!",
     type: "success",
   });
 
-  req.log.info({ userId: user.id, code }, "Invite code redeemed");
-  res.json({ message: "Invitation code accepted. Welcome to Blocker X!" });
+  req.log.info({ userId: user.id, code, isPremium }, "Invite code redeemed");
+  res.json({
+    message: isPremium
+      ? "Premium key accepted! Your account has been upgraded."
+      : "Invitation code accepted. Welcome to Blocker X!",
+    grantsPremium: isPremium,
+  });
 });
 
 export default router;

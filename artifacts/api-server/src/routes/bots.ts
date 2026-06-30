@@ -149,12 +149,11 @@ router.post("/bots/:botId/start", requireAuth, requireInvite, async (req, res): 
 
   try {
     await startBot({ ...bot, userId: user.id });
-    await notifyUser({
+    await createNotification({
       userId: user.id,
-      discordId: user.discordId,
-      title: "Bot Started",
-      message: `"${bot.name}" is starting up.`,
-      type: "success",
+      title: "Bot Starting",
+      message: `"${bot.name}" is starting up. You'll get a DM when it's fully online.`,
+      type: "info",
     });
     req.log.info({ botId }, "Bot start requested");
     res.json({ message: "Bot is starting" });

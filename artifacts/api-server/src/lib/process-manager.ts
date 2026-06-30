@@ -6,6 +6,7 @@ import { db, botsTable, botLogsTable, envVarsTable, usersTable } from "@workspac
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
+import { sendDiscordDm, createNotification } from "./notifications";
 
 const BOT_WORK_DIR = "/tmp/blockerx-bots";
 
@@ -225,17 +226,22 @@ async function spawnBotProcess(
         }
       }
 
-      // Install all dependencies using python3 -m pip (most reliable cross-platform)
+      // Install using python3 -m pip with --break-system-packages (required on Debian/Ubuntu PEP 668 systems)
       await addLog(botId, "info", `[System] Running: python3 -m pip install -r requirements.txt`);
-      const result = runInstallSync("python3", ["-m", "pip", "install", "-r", "requirements.txt", "--quiet", "--exists-action", "i"], workDir);
+      const PIP_FLAGS = ["-m", "pip", "install", "-r", "requirements.txt", "--quiet", "--exists-action", "i", "--break-system-packages"];
+      const result = runInstallSync("python3", PIP_FLAGS, workDir);
       if (!result.success) {
-        // Fallback: try pip3 directly
-        const result2 = runInstallSync("pip3", ["install", "-r", "requirements.txt", "--quiet", "--exists-action", "i"], workDir);
+        // Fallback: pip3 with --break-system-packages
+        const result2 = runInstallSync("pip3", ["install", "-r", "requirements.txt", "--quiet", "--exists-action", "i", "--break-system-packages"], workDir);
         if (!result2.success) {
-          const errMsg = result2.output.slice(0, 400);
-          await addLog(botId, "error", `[System] FATAL: Could not install Python dependencies: ${errMsg}`);
-          await db.update(botsTable).set({ status: "errored" }).where(eq(botsTable.id, botId));
-          return;
+          // Last resort: without --break-system-packages (older systems)
+          const result3 = runInstallSync("pip3", ["install", "-r", "requirements.txt", "--quiet", "--exists-action", "i"], workDir);
+          if (!result3.success) {
+            const errMsg = result3.output.slice(0, 400);
+            await addLog(botId, "error", `[System] FATAL: Could not install Python dependencies: ${errMsg}`);
+            await db.update(botsTable).set({ status: "errored" }).where(eq(botsTable.id, botId));
+            return;
+          }
         }
       }
       await addLog(botId, "info", "[System] Python dependencies installed successfully.");
@@ -277,6 +283,25 @@ async function spawnBotProcess(
 
     await db.update(botsTable).set({ status: "running" }).where(eq(botsTable.id, botId));
 
+    // DM user only when bot is truly online
+    try {
+      const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+      if (freshUser?.discordId) {
+        const [freshBot] = await db.select().from(botsTable).where(eq(botsTable.id, botId));
+        await sendDiscordDm(freshUser.discordId, {
+          title: "✅ Bot Online",
+          message: `**${freshBot?.name || "Your bot"}** is now running and connected to Discord.`,
+          type: "success",
+        });
+        await createNotification({
+          userId,
+          title: "Bot Online",
+          message: `"${freshBot?.name || "Your bot"}" is online.`,
+          type: "success",
+        });
+      }
+    } catch (_) {}
+
     child.stdout?.on("data", async (data: Buffer) => {
       const lines = data.toString().split("\n").filter((l) => l.trim());
       for (const line of lines) await addLog(botId, "info", line);
@@ -304,6 +329,17 @@ async function spawnBotProcess(
       if (code !== 0 && code !== null) {
         await db.update(botsTable).set({ status: "errored" }).where(eq(botsTable.id, botId));
         await addLog(botId, "error", `[System] Bot crashed (exit code ${code}). Stopped. Fix the error and restart manually.`);
+        try {
+          const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+          const [freshBot] = await db.select().from(botsTable).where(eq(botsTable.id, botId));
+          if (freshUser?.discordId) {
+            await sendDiscordDm(freshUser.discordId, {
+              title: "❌ Bot Error",
+              message: `**${freshBot?.name || "Your bot"}** crashed with exit code **${code}**.\nCheck the logs and fix the error, then restart manually.`,
+              type: "error",
+            });
+          }
+        } catch (_) {}
         return;
       }
 

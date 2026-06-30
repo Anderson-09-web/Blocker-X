@@ -18,7 +18,21 @@ export async function createNotification(params: {
   });
 }
 
-export async function sendDiscordDm(discordId: string, message: string): Promise<void> {
+function typeToColor(type?: string): number {
+  switch (type) {
+    case "success": return 0x22c55e;
+    case "error": return 0xef4444;
+    case "warning": return 0xeab308;
+    case "announcement": return 0x8b5cf6;
+    default: return 0x3b82f6;
+  }
+}
+
+export async function sendDiscordDm(discordId: string, params: {
+  title: string;
+  message: string;
+  type?: "info" | "success" | "warning" | "error" | "announcement";
+}): Promise<void> {
   const botToken = process.env.DISCORD_BOT_TOKEN;
   if (!botToken) return;
 
@@ -39,13 +53,21 @@ export async function sendDiscordDm(discordId: string, message: string): Promise
 
     const dmChannel = (await dmRes.json()) as { id: string };
 
+    const embed = {
+      title: params.title,
+      description: params.message,
+      color: typeToColor(params.type),
+      footer: { text: "Blocker X" },
+      timestamp: new Date().toISOString(),
+    };
+
     const msgRes = await fetch(`https://discord.com/api/v10/channels/${dmChannel.id}/messages`, {
       method: "POST",
       headers: {
         Authorization: `Bot ${botToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ content: message }),
+      body: JSON.stringify({ embeds: [embed] }),
     });
 
     if (!msgRes.ok) {
@@ -66,7 +88,6 @@ export async function notifyUser(params: {
 }) {
   await createNotification({ userId: params.userId, title: params.title, message: params.message, type: params.type });
   if (params.discord !== false) {
-    const prefix = params.type === "error" ? "🔴" : params.type === "warning" ? "🟡" : params.type === "success" ? "🟢" : "🔵";
-    await sendDiscordDm(params.discordId, `${prefix} **Blocker X — ${params.title}**\n${params.message}`);
+    await sendDiscordDm(params.discordId, { title: params.title, message: params.message, type: params.type });
   }
 }

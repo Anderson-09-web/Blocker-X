@@ -7,14 +7,15 @@ import { requireAuth, requireInvite } from "../lib/auth-middleware";
 const router = Router();
 
 const FREE_LIMIT = 10;
-const GROQ_API_KEY = process.env.GROQ_API_KEY!;
-const GROQ_MODEL = "llama3-70b-8192";
+const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
+const GROQ_MODEL = "llama-3.1-70b-versatile";
 
 router.post("/ai/chat", requireAuth, requireInvite, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const { message, botId, language = "python", context } = req.body;
 
   if (!message) { res.status(400).json({ error: "Message is required" }); return; }
+  if (!GROQ_API_KEY) { res.status(503).json({ error: "AI service is not configured. Ask the admin to set the GROQ_API_KEY." }); return; }
 
   const [usageResult] = await db.select({ count: count() }).from(aiUsageTable).where(eq(aiUsageTable.userId, user.id));
   const usageCount = Number(usageResult?.count || 0);

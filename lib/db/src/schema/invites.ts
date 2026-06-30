@@ -9,6 +9,7 @@ export const inviteCodesTable = pgTable("invitation_codes", {
   usesCount: integer("uses_count").notNull().default(0),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   isActive: boolean("is_active").notNull().default(true),
+  grantsPremium: boolean("grants_premium").notNull().default(false),
   createdBy: text("created_by").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

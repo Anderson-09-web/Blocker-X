@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Copy, Trash2, ToggleLeft, ToggleRight, KeyRound } from "lucide-react";
+import { Plus, Copy, Trash2, ToggleLeft, ToggleRight, KeyRound, Crown } from "lucide-react";
 
 export default function AdminInvitesPage() {
   const { data: codes, isLoading } = useListInviteCodes();
@@ -18,13 +18,24 @@ export default function AdminInvitesPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ maxUses: "", customCode: "" });
+  const [form, setForm] = useState({ maxUses: "", customCode: "", grantsPremium: false });
 
   const refresh = () => qc.invalidateQueries({ queryKey: getListInviteCodesQueryKey() });
 
   const handleCreate = () => {
-    createInvite.mutate({ data: { maxUses: form.maxUses ? parseInt(form.maxUses) : undefined, customCode: form.customCode || undefined } as any }, {
-      onSuccess: () => { refresh(); setShowCreate(false); setForm({ maxUses: "", customCode: "" }); toast({ title: "Invite code created" }); },
+    createInvite.mutate({
+      data: {
+        maxUses: form.maxUses ? parseInt(form.maxUses) : undefined,
+        customCode: form.customCode || undefined,
+        grantsPremium: form.grantsPremium,
+      } as any
+    }, {
+      onSuccess: () => {
+        refresh();
+        setShowCreate(false);
+        setForm({ maxUses: "", customCode: "", grantsPremium: false });
+        toast({ title: form.grantsPremium ? "Premium key created" : "Invite code created" });
+      },
       onError: () => toast({ title: "Failed to create", variant: "destructive" }),
     });
   };
@@ -39,7 +50,7 @@ export default function AdminInvitesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Invite Codes</h1>
-          <p className="text-muted-foreground mt-1">Manage platform access</p>
+          <p className="text-muted-foreground mt-1">Manage platform access and premium keys</p>
         </div>
         <Button onClick={() => setShowCreate(true)} data-testid="button-create-invite">
           <Plus className="w-4 h-4 mr-2" /> Create Code
@@ -58,16 +69,21 @@ export default function AdminInvitesPage() {
           ) : (
             <div className="divide-y divide-border/30">
               {(codes as any[])?.map((c: any) => (
-                <div key={c.id} className="flex items-center gap-4 px-6 py-4" data-testid={`row-invite-${c.id}`}>
+                <div key={c.id} className="flex items-center gap-4 px-4 md:px-6 py-4" data-testid={`row-invite-${c.id}`}>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <code className="font-mono font-bold text-primary text-sm">{c.code}</code>
-                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => copyCode(c.code)} data-testid={`button-copy-${c.id}`}>
+                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => copyCode(c.code)}>
                         <Copy className="w-3 h-3" />
                       </Button>
                       <span className={`text-xs px-1.5 py-0.5 rounded-full border ${c.isActive ? "bg-green-500/15 text-green-400 border-green-500/20" : "bg-gray-500/15 text-gray-400 border-gray-500/20"}`}>
                         {c.isActive ? "Active" : "Disabled"}
                       </span>
+                      {c.grantsPremium && (
+                        <span className="text-xs px-1.5 py-0.5 rounded-full border bg-yellow-500/15 text-yellow-400 border-yellow-500/20 flex items-center gap-1">
+                          <Crown className="w-2.5 h-2.5" /> Premium
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {c.usesCount}{c.maxUses ? `/${c.maxUses}` : ""} uses
@@ -77,11 +93,11 @@ export default function AdminInvitesPage() {
                   </div>
                   <div className="flex gap-1">
                     <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title={c.isActive ? "Disable" : "Enable"}
-                      onClick={() => toggleInvite.mutate({ inviteId: c.id }, { onSuccess: refresh })} data-testid={`button-toggle-${c.id}`}>
+                      onClick={() => toggleInvite.mutate({ inviteId: c.id }, { onSuccess: refresh })}>
                       {c.isActive ? <ToggleRight className="w-4 h-4 text-green-400" /> : <ToggleLeft className="w-4 h-4 text-muted-foreground" />}
                     </Button>
                     <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
-                      onClick={() => deleteInvite.mutate({ inviteId: c.id }, { onSuccess: refresh })} data-testid={`button-delete-invite-${c.id}`}>
+                      onClick={() => deleteInvite.mutate({ inviteId: c.id }, { onSuccess: refresh })}>
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
                   </div>
@@ -106,11 +122,25 @@ export default function AdminInvitesPage() {
               <Input id="max-uses" type="number" value={form.maxUses} onChange={e => setForm(f=>({...f, maxUses: e.target.value}))}
                 placeholder="Unlimited" className="mt-1" data-testid="input-max-uses" />
             </div>
+            <div className="flex items-center gap-3 p-3 rounded-md border border-border/40 bg-yellow-500/5 cursor-pointer"
+              onClick={() => setForm(f=>({...f, grantsPremium: !f.grantsPremium}))}>
+              <div className={`w-10 h-6 rounded-full transition-colors relative ${form.grantsPremium ? "bg-yellow-500" : "bg-muted"}`}>
+                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${form.grantsPremium ? "left-5" : "left-1"}`} />
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5 text-sm font-medium">
+                  <Crown className="w-3.5 h-3.5 text-yellow-400" />
+                  Premium Key
+                </div>
+                <p className="text-xs text-muted-foreground">Grants Premium plan when redeemed</p>
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={createInvite.isPending} data-testid="button-submit-invite">
-              {createInvite.isPending ? "Creating..." : "Create"}
+            <Button onClick={handleCreate} disabled={createInvite.isPending} data-testid="button-submit-invite"
+              className={form.grantsPremium ? "bg-yellow-500 hover:bg-yellow-600 text-black" : ""}>
+              {createInvite.isPending ? "Creating..." : form.grantsPremium ? "Create Premium Key" : "Create"}
             </Button>
           </DialogFooter>
         </DialogContent>

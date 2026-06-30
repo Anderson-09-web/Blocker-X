@@ -90,23 +90,25 @@ router.get("/admin/invites", requireAuth, requireAdmin, async (req, res): Promis
   res.json(filtered.map(c => ({
     id: c.id, code: c.code, maxUses: c.maxUses, usesCount: c.usesCount,
     expiresAt: c.expiresAt?.toISOString() || null, isActive: c.isActive,
+    grantsPremium: c.grantsPremium,
     createdBy: c.createdBy, createdAt: c.createdAt.toISOString(),
   })));
 });
 
 router.post("/admin/invites", requireAuth, requireAdmin, async (req, res): Promise<void> => {
   const user = (req as any).user;
-  const { maxUses, expiresAt, customCode } = req.body;
+  const { maxUses, expiresAt, customCode, grantsPremium } = req.body;
   const code = customCode || Math.random().toString(36).substring(2, 10).toUpperCase();
   const [invite] = await db.insert(inviteCodesTable).values({
     id: randomUUID(), code, maxUses: maxUses || null,
     expiresAt: expiresAt ? new Date(expiresAt) : null,
-    isActive: true, createdBy: user.id,
+    isActive: true, grantsPremium: !!grantsPremium, createdBy: user.id,
   }).returning();
-  await db.insert(auditLogsTable).values({ id: randomUUID(), userId: user.id, action: "create_invite", target: code });
+  await db.insert(auditLogsTable).values({ id: randomUUID(), userId: user.id, action: grantsPremium ? "create_premium_key" : "create_invite", target: code });
   res.status(201).json({
     id: invite.id, code: invite.code, maxUses: invite.maxUses, usesCount: invite.usesCount,
     expiresAt: invite.expiresAt?.toISOString() || null, isActive: invite.isActive,
+    grantsPremium: invite.grantsPremium,
     createdBy: invite.createdBy, createdAt: invite.createdAt.toISOString(),
   });
 });
