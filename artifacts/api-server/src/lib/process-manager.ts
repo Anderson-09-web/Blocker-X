@@ -155,6 +155,18 @@ async function spawnBotProcess(
     let args: string[];
 
     if (bot.language === "python") {
+      // Diagnostic: verify Python availability before attempting install
+      const pyCheck = runInstallSync("python3", ["--version"], workDir);
+      const pipCheck = runInstallSync("python3", ["-m", "pip", "--version"], workDir);
+      await addLog(botId, "info", `[System] Python: ${pyCheck.success ? pyCheck.output.trim() : "NOT FOUND - " + pyCheck.output.slice(0, 100)}`);
+      await addLog(botId, "info", `[System] pip: ${pipCheck.success ? pipCheck.output.trim() : "NOT FOUND - " + pipCheck.output.slice(0, 100)}`);
+
+      if (!pyCheck.success) {
+        await addLog(botId, "error", "[System] FATAL: python3 is not installed on this server. Contact support.");
+        await db.update(botsTable).set({ status: "errored" }).where(eq(botsTable.id, botId));
+        return;
+      }
+
       await addLog(botId, "info", "[System] Installing Python dependencies...");
 
       const { existsSync, readFileSync } = await import("fs");
