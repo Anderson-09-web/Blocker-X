@@ -49,7 +49,7 @@ args = "PORT=25673 BASE_PATH=/ pnpm --filter @workspace/blockerx run dev"
 waitForPort = 25673
 
 [agent]
-stack = "PNPM_WORKSPACE"
+stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
 
 [postMerge]

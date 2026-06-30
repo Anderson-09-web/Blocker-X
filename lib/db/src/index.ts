@@ -8,13 +8,19 @@ const connectionString = process.env.NEON_DATABASE_URL || process.env.DATABASE_U
 
 if (!connectionString) {
   throw new Error(
-    "NEON_DATABASE_URL must be set. Please add your Neon PostgreSQL connection string.",
+    "DATABASE_URL must be set. Please configure your PostgreSQL connection string.",
   );
 }
 
+const sslConfig = connectionString.includes("neon.tech")
+  ? { rejectUnauthorized: false }
+  : connectionString.includes("sslmode=disable") || connectionString.includes("helium")
+    ? false
+    : false;
+
 export const pool = new Pool({
   connectionString,
-  ssl: connectionString.includes("neon.tech") ? { rejectUnauthorized: false } : false,
+  ssl: sslConfig,
 });
 
 export const db = drizzle(pool, { schema });
