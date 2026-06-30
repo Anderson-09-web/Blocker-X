@@ -777,12 +777,12 @@ export default function BotDetailPage() {
                         <span className="truncate">{f.name}</span>
                         {f.type === "directory" && <ChevronRight className="w-3 h-3 shrink-0 opacity-40 ml-auto" />}
                       </button>
-                      <div className="flex items-center gap-0 opacity-0 group-hover:opacity-100 transition-opacity pr-1 shrink-0">
+                      <div className="flex items-center gap-0 pr-1 shrink-0">
                         {f.type !== "directory" && (
                           <button
                             title="Mover a carpeta"
                             onClick={() => { setMovingFile({ path: f.path, name: f.name }); setMoveTargetFolder(currentFolder || ""); setShowMoveModal(true); }}
-                            className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground">
+                            className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-accent text-muted-foreground hover:text-foreground transition-opacity">
                             <FolderInput className="w-3.5 h-3.5" />
                           </button>
                         )}
@@ -792,7 +792,11 @@ export default function BotDetailPage() {
                             ? setConfirmDeleteFolder({ path: f.path, name: f.name })
                             : setConfirmDeleteFile(f.path)
                           }
-                          className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive">
+                          className={`p-1 rounded hover:bg-destructive/20 hover:text-destructive transition-colors ${
+                            f.type === "directory"
+                              ? "text-muted-foreground/60 opacity-100"
+                              : "text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                          }`}>
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef } from "react";
 import { useGetMe, getGetMeQueryKey, User } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
 
@@ -11,7 +11,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { data: user, isLoading, error } = useGetMe({
+  const { data: user, isLoading } = useGetMe({
     query: {
       queryKey: getGetMeQueryKey(),
       retry: false,
@@ -20,22 +20,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   const [location, setLocation] = useLocation();
+  const redirectedRef = useRef(false);
 
   useEffect(() => {
-    if (!isLoading) {
-      if (!user && location !== "/" && !location.startsWith("/api/auth")) {
+    if (isLoading) return;
+    if (!user) {
+      if (
+        !redirectedRef.current &&
+        location !== "/" &&
+        !location.startsWith("/api/auth")
+      ) {
+        redirectedRef.current = true;
         setLocation("/");
-      } else if (user) {
-        if (user.isBanned) {
-          // Stay on current or specific banned page
-        } else if (!user.hasInvite && !user.isAdmin && location !== "/invite") {
-          setLocation("/invite");
-        } else if ((user.hasInvite || user.isAdmin) && (location === "/" || location === "/invite")) {
-          setLocation("/dashboard");
-        }
+      }
+    } else {
+      redirectedRef.current = false;
+      if (user.isBanned) {
+        return;
+      }
+      if (!user.hasInvite && !user.isAdmin && location !== "/invite") {
+        setLocation("/invite");
+      } else if ((user.hasInvite || user.isAdmin) && (location === "/" || location === "/invite")) {
+        setLocation("/dashboard");
       }
     }
-  }, [user, isLoading, location, setLocation]);
+  }, [user, isLoading]);
 
   return (
     <AuthContext.Provider value={{ user: user || null, isLoading, isAuthenticated: !!user }}>

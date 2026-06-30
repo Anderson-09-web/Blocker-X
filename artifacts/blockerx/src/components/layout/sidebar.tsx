@@ -1,7 +1,8 @@
 import React from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth-context";
-import { useLogout } from "@workspace/api-client-react";
+import { useLogout, getGetMeQueryKey } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { 
   LayoutDashboard, 
   TerminalSquare, 
@@ -61,10 +62,19 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
   const { user } = useAuth();
   const [location] = useLocation();
   const logoutMutation = useLogout();
+  const qc = useQueryClient();
 
   const handleLogout = () => {
     logoutMutation.mutate(undefined, {
-      onSuccess: () => { window.location.href = "/"; }
+      onSuccess: () => {
+        qc.removeQueries({ queryKey: getGetMeQueryKey() });
+        qc.clear();
+        window.location.href = "/";
+      },
+      onError: () => {
+        qc.clear();
+        window.location.href = "/";
+      }
     });
   };
 
@@ -77,18 +87,18 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
         {items.map((item) => {
           const isActive = location === item.href || location.startsWith(`${item.href}/`);
           return (
-            <Link key={item.href} href={item.href}>
-              <a
-                onClick={onNavigate}
-                className={`flex items-center gap-3 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                  isActive
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-                }`}
-              >
-                <item.icon className="w-4 h-4 shrink-0" />
-                {item.title}
-              </a>
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={onNavigate}
+              className={`flex items-center gap-3 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                isActive
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+              }`}
+            >
+              <item.icon className="w-4 h-4 shrink-0" />
+              {item.title}
             </Link>
           );
         })}
@@ -128,10 +138,11 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
         </div>
         <button
           onClick={handleLogout}
-          className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+          disabled={logoutMutation.isPending}
+          className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
         >
           <LogOut className="w-4 h-4" />
-          Log out
+          {logoutMutation.isPending ? "Cerrando..." : "Log out"}
         </button>
       </div>
     </div>
