@@ -143,9 +143,9 @@ function CreateBotWizard({ onClose, onCreated }: { onClose: () => void; onCreate
         </DialogTitle>
       </DialogHeader>
 
-      <AnimatePresence mode="wait">
+      <AnimatePresence initial={false}>
         {step === 1 && (
-          <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-3 mt-2">
+          <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20, position: "absolute" }} className="space-y-3 mt-2">
             <p className="text-sm text-muted-foreground">Selecciona el lenguaje de programación para tu bot.</p>
             <div className="grid grid-cols-2 gap-3">
               <button

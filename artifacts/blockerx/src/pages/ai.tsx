@@ -225,7 +225,7 @@ export default function AiPage() {
           {!agentMode && (
             <>
               <label className="text-xs text-muted-foreground flex items-center gap-1.5"><FileCode className="w-3 h-3" />Archivo (contexto)</label>
-              <Select value={selectedFilePath} onValueChange={setSelectedFilePath} disabled={selectedBotId === "none"}>
+              <Select value={selectedFilePath} onValueChange={(v) => startTransition(() => setSelectedFilePath(v))} disabled={selectedBotId === "none"}>
                 <SelectTrigger className="bg-card/60 border-border/40 text-sm h-9">
                   <SelectValue placeholder="Ninguno" />
                 </SelectTrigger>

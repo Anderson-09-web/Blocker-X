@@ -58,17 +58,21 @@ router.get("/bots", requireAuth, requireInvite, async (req, res): Promise<void> 
     .where(eq(botsTable.userId, user.id))
     .orderBy(desc(botsTable.createdAt));
 
-  // Also include bots shared with this user
-  const sharedEntries = await db.select({ botId: botSharesTable.botId })
-    .from(botSharesTable)
-    .where(eq(botSharesTable.collaboratorId, user.id));
-  const sharedBotIds = sharedEntries.map(s => s.botId);
+  // Also include bots shared with this user (table may not exist yet in older deployments)
   let sharedBots: typeof ownedBots = [];
-  if (sharedBotIds.length > 0) {
-    sharedBots = await db.select().from(botsTable)
-      .where(or(
-        ...sharedBotIds.map(id => eq(botsTable.id, id))
-      ));
+  try {
+    const sharedEntries = await db.select({ botId: botSharesTable.botId })
+      .from(botSharesTable)
+      .where(eq(botSharesTable.collaboratorId, user.id));
+    const sharedBotIds = sharedEntries.map(s => s.botId);
+    if (sharedBotIds.length > 0) {
+      sharedBots = await db.select().from(botsTable)
+        .where(or(
+          ...sharedBotIds.map(id => eq(botsTable.id, id))
+        ));
+    }
+  } catch (err) {
+    req.log.warn({ err }, "bot_shares query failed — table may not exist yet");
   }
 
   const all = [...ownedBots, ...sharedBots.filter(sb => !ownedBots.find(ob => ob.id === sb.id))];
