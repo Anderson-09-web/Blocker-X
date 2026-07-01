@@ -1,4 +1,4 @@
-import { useState, useEffect, startTransition } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "wouter";
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -231,6 +231,10 @@ export default function BotDetailPage() {
   useEffect(() => {
     if (showShareDialog) fetchShares();
   }, [showShareDialog]);
+
+  useEffect(() => {
+    if (activeTab === "users") fetchShares();
+  }, [activeTab]);
 
   const handleShare = async () => {
     if (!shareDiscordId.trim()) return;
@@ -473,6 +477,7 @@ export default function BotDetailPage() {
   if (!bot) return <div className="text-muted-foreground">Bot no encontrado.</div>;
 
   const lang = (bot as any).language as "python" | "javascript";
+  const isOwner = (bot as any).isOwner === true;
 
   return (
     <div className="space-y-6">
@@ -573,13 +578,14 @@ export default function BotDetailPage() {
         </Card>
       )}
 
-      <Tabs value={activeTab} onValueChange={v => startTransition(() => setActiveTab(v))}>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="bg-card/60 border border-border/40 w-full md:w-auto flex overflow-x-auto">
           <TabsTrigger value="files" className="flex-1 md:flex-none">Files</TabsTrigger>
           <TabsTrigger value="env" className="flex-1 md:flex-none">Environment</TabsTrigger>
           <TabsTrigger value="logs" className="flex-1 md:flex-none">Logs</TabsTrigger>
           <TabsTrigger value="deployments" className="flex-1 md:flex-none">Deployments</TabsTrigger>
-          <TabsTrigger value="settings" className="flex-1 md:flex-none"><Settings className="w-3.5 h-3.5 mr-1" />Settings</TabsTrigger>
+          {isOwner && <TabsTrigger value="users" className="flex-1 md:flex-none"><Users className="w-3.5 h-3.5 mr-1" />Users</TabsTrigger>}
+          {isOwner && <TabsTrigger value="settings" className="flex-1 md:flex-none"><Settings className="w-3.5 h-3.5 mr-1" />Settings</TabsTrigger>}
           <TabsTrigger value="guide" className="flex-1 md:flex-none"><BookOpen className="w-3.5 h-3.5 mr-1" />Guía</TabsTrigger>
         </TabsList>
 
@@ -923,6 +929,52 @@ export default function BotDetailPage() {
                   </div>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Users — owner only */}
+        <TabsContent value="users" className="mt-4">
+          <Card className="bg-card/60 border-border/40">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Users className="w-4 h-4" /> Usuarios con acceso
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {sharesLoading ? (
+                <Skeleton className="h-14 w-full" />
+              ) : shares.length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground">
+                  <Users className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">Sin colaboradores aún</p>
+                  <p className="text-xs mt-1">Usa el botón <span className="font-semibold text-foreground">Share</span> del encabezado para invitar usuarios.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {shares.map((s: any) => (
+                    <div key={s.id} className="flex items-center justify-between gap-3 p-3 rounded-md border border-border/30 bg-card/30">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <Users className="w-4 h-4 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{s.collaboratorUsername}</p>
+                          <p className="text-xs text-muted-foreground font-mono">{s.collaboratorDiscordId}</p>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="shrink-0 gap-1.5"
+                        onClick={() => handleRemoveShare(s.id)}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />Eliminar
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

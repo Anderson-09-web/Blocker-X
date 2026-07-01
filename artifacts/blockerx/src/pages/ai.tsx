@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, startTransition } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import { useGetAIUsage, useListBots, useListFiles, getListFilesQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -234,7 +234,7 @@ export default function AiPage() {
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
         <div key="proyecto" className="space-y-1">
           <label className="text-xs text-muted-foreground flex items-center gap-1.5"><FolderCode className="w-3 h-3" />Proyecto</label>
-          <Select value={selectedBotId} onValueChange={v => { startTransition(() => setSelectedBotId(v)); }}>
+          <Select value={selectedBotId} onValueChange={setSelectedBotId}>
             <SelectTrigger className="bg-card/60 border-border/40 text-sm h-9">
               <SelectValue placeholder="Ninguno" />
             </SelectTrigger>
@@ -251,7 +251,7 @@ export default function AiPage() {
           {!agentMode && (
             <>
               <label className="text-xs text-muted-foreground flex items-center gap-1.5"><FileCode className="w-3 h-3" />Archivo (contexto)</label>
-              <Select value={selectedFilePath} onValueChange={(v) => startTransition(() => setSelectedFilePath(v))} disabled={selectedBotId === "none"}>
+              <Select value={selectedFilePath} onValueChange={setSelectedFilePath} disabled={selectedBotId === "none"}>
                 <SelectTrigger className="bg-card/60 border-border/40 text-sm h-9">
                   <SelectValue placeholder="Ninguno" />
                 </SelectTrigger>
@@ -268,7 +268,7 @@ export default function AiPage() {
 
         <div key="lenguaje" className="space-y-1">
           <label className="text-xs text-muted-foreground">Lenguaje</label>
-          <Select value={language} onValueChange={(v) => startTransition(() => setLanguage(v))}>
+          <Select value={language} onValueChange={setLanguage}>
             <SelectTrigger className="bg-card/60 border-border/40 text-sm h-9">
               <SelectValue />
             </SelectTrigger>

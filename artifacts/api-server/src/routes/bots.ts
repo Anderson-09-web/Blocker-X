@@ -164,10 +164,23 @@ router.post("/bots", requireAuth, requireInvite, async (req, res): Promise<void>
 router.get("/bots/:botId", requireAuth, requireInvite, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const botId = getBotId(req);
-  const [bot] = await db.select().from(botsTable)
-    .where(and(eq(botsTable.id, botId), eq(botsTable.userId, user.id)));
+  const [bot] = await db.select().from(botsTable).where(eq(botsTable.id, botId));
   if (!bot) { res.status(404).json({ error: "Bot not found" }); return; }
-  res.json({ ...formatBot(bot), status: getProcessStatus(botId) === "running" ? "running" : bot.status });
+
+  const isOwner = bot.userId === user.id;
+  if (!isOwner) {
+    // Allow if user is a collaborator
+    try {
+      const [share] = await db.select({ id: botSharesTable.id })
+        .from(botSharesTable)
+        .where(and(eq(botSharesTable.botId, botId), eq(botSharesTable.collaboratorId, user.id)));
+      if (!share) { res.status(404).json({ error: "Bot not found" }); return; }
+    } catch {
+      res.status(404).json({ error: "Bot not found" }); return;
+    }
+  }
+
+  res.json({ ...formatBot(bot), status: getProcessStatus(botId) === "running" ? "running" : bot.status, isOwner });
 });
 
 router.patch("/bots/:botId", requireAuth, requireInvite, async (req, res): Promise<void> => {

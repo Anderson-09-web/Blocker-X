@@ -4,18 +4,6 @@ import { motion } from "framer-motion";
 import { Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
-/** Returns true for benign Radix UI portal-cleanup race errors (React 18 concurrent mode). */
-function isDomCleanupError(err: unknown): boolean {
-  const msg = (err instanceof Error ? err.message : String(err)) ?? "";
-  return (
-    msg.includes("removeChild") ||
-    msg.includes("insertBefore") ||
-    msg.includes("El nodo que se va a eliminar") ||
-    msg.includes("The node to be removed is not a child") ||
-    (err instanceof DOMException && err.name === "NotFoundError")
-  );
-}
-
 class PageErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean; error: string }
@@ -25,13 +13,7 @@ class PageErrorBoundary extends React.Component<
     this.state = { hasError: false, error: "" };
   }
   static getDerivedStateFromError(err: Error) {
-    if (isDomCleanupError(err)) return { hasError: false, error: "" };
     return { hasError: true, error: err?.message || "Unknown error" };
-  }
-  componentDidCatch(err: Error) {
-    if (isDomCleanupError(err)) {
-      this.setState({ hasError: false, error: "" });
-    }
   }
   render() {
     if (this.state.hasError) {
