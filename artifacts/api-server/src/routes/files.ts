@@ -1,14 +1,32 @@
 import { Router } from "express";
-import { db, botsTable } from "@workspace/db";
+import { db, botsTable, botSharesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth, requireInvite } from "../lib/auth-middleware";
 import { r2ListFiles, r2ReadFile, r2WriteFile, r2DeleteFile, r2RenameFile, r2DeletePrefix } from "../lib/r2";
 
 const router = Router();
 
+/**
+ * Resolves the R2 prefix for a bot if the requesting user is the owner OR
+ * an invited collaborator. Returns null if the user has no access.
+ */
 async function getBotR2Prefix(botId: string, userId: string): Promise<string | null> {
-  const [bot] = await db.select().from(botsTable).where(and(eq(botsTable.id, botId), eq(botsTable.userId, userId)));
-  return bot ? bot.r2Prefix : null;
+  // Try owner first (most common path)
+  const [bot] = await db.select().from(botsTable).where(eq(botsTable.id, botId));
+  if (!bot) return null;
+  if (bot.userId === userId) return bot.r2Prefix;
+
+  // Not owner — check collaborator table
+  try {
+    const [share] = await db.select({ id: botSharesTable.id })
+      .from(botSharesTable)
+      .where(and(eq(botSharesTable.botId, botId), eq(botSharesTable.collaboratorId, userId)));
+    if (share) return bot.r2Prefix;
+  } catch {
+    // bot_shares table may not exist in older deployments
+  }
+
+  return null;
 }
 
 router.get("/files/:botId/list", requireAuth, requireInvite, async (req, res): Promise<void> => {
@@ -72,7 +90,7 @@ router.patch("/files/:botId/rename", requireAuth, requireInvite, async (req, res
     res.json({ message: "File renamed" });
   } catch (err) {
     req.log.error({ err }, "Rename failed");
-    res.status(500).json({ error: "Rename failed" });
+    res.status(500).json({ error: "File renamed" });
   }
 });
 
