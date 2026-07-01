@@ -214,15 +214,28 @@ router.delete("/bots/:botId", requireAuth, requireInvite, async (req, res): Prom
   res.json({ message: "Bot deleted successfully" });
 });
 
+/** Allow owner OR collaborator to control a bot. Returns the bot or sends 404. */
+async function requireBotAccess(req: any, res: any, botId: string): Promise<typeof botsTable.$inferSelect | null> {
+  const user = req.user;
+  const [bot] = await db.select().from(botsTable).where(eq(botsTable.id, botId));
+  if (!bot) { res.status(404).json({ error: "Bot not found" }); return null; }
+  if (bot.userId === user.id) return bot;
+  try {
+    const [share] = await db.select({ id: botSharesTable.id }).from(botSharesTable)
+      .where(and(eq(botSharesTable.botId, botId), eq(botSharesTable.collaboratorId, user.id)));
+    if (share) return bot;
+  } catch { /* bot_shares may not exist in older deployments */ }
+  res.status(404).json({ error: "Bot not found" }); return null;
+}
+
 router.post("/bots/:botId/start", requireAuth, requireInvite, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const botId = getBotId(req);
-  const [bot] = await db.select().from(botsTable)
-    .where(and(eq(botsTable.id, botId), eq(botsTable.userId, user.id)));
-  if (!bot) { res.status(404).json({ error: "Bot not found" }); return; }
+  const bot = await requireBotAccess(req, res, botId);
+  if (!bot) return;
 
   try {
-    await startBot({ ...bot, userId: user.id });
+    await startBot({ ...bot, userId: bot.userId });
     await createNotification({
       userId: user.id,
       title: "Bot Starting",
@@ -239,9 +252,8 @@ router.post("/bots/:botId/start", requireAuth, requireInvite, async (req, res): 
 router.post("/bots/:botId/stop", requireAuth, requireInvite, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const botId = getBotId(req);
-  const [bot] = await db.select().from(botsTable)
-    .where(and(eq(botsTable.id, botId), eq(botsTable.userId, user.id)));
-  if (!bot) { res.status(404).json({ error: "Bot not found" }); return; }
+  const bot = await requireBotAccess(req, res, botId);
+  if (!bot) return;
 
   await stopBot(botId);
   await notifyUser({
@@ -257,11 +269,10 @@ router.post("/bots/:botId/stop", requireAuth, requireInvite, async (req, res): P
 router.post("/bots/:botId/restart", requireAuth, requireInvite, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const botId = getBotId(req);
-  const [bot] = await db.select().from(botsTable)
-    .where(and(eq(botsTable.id, botId), eq(botsTable.userId, user.id)));
-  if (!bot) { res.status(404).json({ error: "Bot not found" }); return; }
+  const bot = await requireBotAccess(req, res, botId);
+  if (!bot) return;
 
-  await restartBot({ ...bot, userId: user.id } as any, user.id);
+  await restartBot({ ...bot, userId: bot.userId } as any, bot.userId);
   await notifyUser({
     userId: user.id,
     discordId: user.discordId,

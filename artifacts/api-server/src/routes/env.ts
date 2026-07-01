@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, envVarsTable, botsTable } from "@workspace/db";
+import { db, envVarsTable, botsTable, botSharesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, requireInvite } from "../lib/auth-middleware";
@@ -9,8 +9,15 @@ const router = Router();
 router.get("/env/:botId", requireAuth, requireInvite, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const botId = Array.isArray(req.params.botId) ? req.params.botId[0] : req.params.botId;
-  const [bot] = await db.select().from(botsTable).where(and(eq(botsTable.id, botId), eq(botsTable.userId, user.id)));
+  const [bot] = await db.select().from(botsTable).where(eq(botsTable.id, botId));
   if (!bot) { res.status(404).json({ error: "Bot not found" }); return; }
+  if (bot.userId !== user.id) {
+    try {
+      const [share] = await db.select({ id: botSharesTable.id }).from(botSharesTable)
+        .where(and(eq(botSharesTable.botId, botId), eq(botSharesTable.collaboratorId, user.id)));
+      if (!share) { res.status(404).json({ error: "Bot not found" }); return; }
+    } catch { res.status(404).json({ error: "Bot not found" }); return; }
+  }
   const vars = await db.select().from(envVarsTable).where(eq(envVarsTable.botId, botId));
   res.json(vars.map(v => ({ id: v.id, botId: v.botId, key: v.key, value: v.value, createdAt: v.createdAt.toISOString() })));
 });
