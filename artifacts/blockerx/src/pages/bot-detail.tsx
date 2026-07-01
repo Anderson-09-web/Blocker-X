@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, startTransition } from "react";
 import { useParams } from "wouter";
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -157,6 +157,7 @@ export default function BotDetailPage() {
   const [shareLoading, setShareLoading] = useState(false);
   const [shares, setShares] = useState<any[]>([]);
   const [sharesLoading, setSharesLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState("files");
 
   const { user: currentUser } = useAuth();
 
@@ -572,7 +573,7 @@ export default function BotDetailPage() {
         </Card>
       )}
 
-      <Tabs defaultValue="files">
+      <Tabs value={activeTab} onValueChange={v => startTransition(() => setActiveTab(v))}>
         <TabsList className="bg-card/60 border border-border/40 w-full md:w-auto flex overflow-x-auto">
           <TabsTrigger value="files" className="flex-1 md:flex-none">Files</TabsTrigger>
           <TabsTrigger value="env" className="flex-1 md:flex-none">Environment</TabsTrigger>

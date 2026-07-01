@@ -4,6 +4,52 @@ import { motion } from "framer-motion";
 import { Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
+/** Returns true for benign Radix UI portal-cleanup race errors (React 18 concurrent mode). */
+function isDomCleanupError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)) ?? "";
+  return (
+    msg.includes("removeChild") ||
+    msg.includes("insertBefore") ||
+    msg.includes("El nodo que se va a eliminar") ||
+    msg.includes("The node to be removed is not a child") ||
+    (err instanceof DOMException && err.name === "NotFoundError")
+  );
+}
+
+class PageErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: string }
+> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: "" };
+  }
+  static getDerivedStateFromError(err: Error) {
+    if (isDomCleanupError(err)) return { hasError: false, error: "" };
+    return { hasError: true, error: err?.message || "Unknown error" };
+  }
+  componentDidCatch(err: Error) {
+    if (isDomCleanupError(err)) {
+      this.setState({ hasError: false, error: "" });
+    }
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="h-full flex flex-col items-center justify-center gap-4 py-20">
+          <p className="text-destructive font-semibold">Algo salió mal</p>
+          <p className="text-sm text-muted-foreground max-w-sm text-center">{this.state.error}</p>
+          <button
+            className="text-xs bg-primary text-primary-foreground px-4 py-2 rounded-md"
+            onClick={() => this.setState({ hasError: false, error: "" })}
+          >Reintentar</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -40,7 +86,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             transition={{ duration: 0.3 }}
             className="p-4 md:p-8 max-w-7xl mx-auto"
           >
-            {children}
+            <PageErrorBoundary>
+              {children}
+            </PageErrorBoundary>
           </motion.div>
         </main>
       </div>

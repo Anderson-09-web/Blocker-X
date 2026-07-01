@@ -5,55 +5,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 
-/** Returns true if the error is a benign DOM portal-cleanup race (Radix UI + React 18). */
-function isDomCleanupError(err: unknown): boolean {
-  const msg = (err instanceof Error ? err.message : String(err)) ?? "";
-  return (
-    msg.includes("removeChild") ||
-    msg.includes("El nodo que se va a eliminar") ||
-    msg.includes("The node to be removed is not a child") ||
-    msg.includes("insertBefore") ||
-    (err instanceof DOMException && err.name === "NotFoundError")
-  );
-}
-
-class ErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean; error: string }
-> {
-  constructor(props: any) {
-    super(props);
-    this.state = { hasError: false, error: "" };
-  }
-  static getDerivedStateFromError(err: Error) {
-    // DOM portal-cleanup race conditions are benign — recover silently.
-    if (isDomCleanupError(err)) return { hasError: false, error: "" };
-    return { hasError: true, error: err?.message || "Unknown error" };
-  }
-  componentDidCatch(err: Error, info: React.ErrorInfo) {
-    if (isDomCleanupError(err)) {
-      // Reset immediately so children re-render normally.
-      this.setState({ hasError: false, error: "" });
-      return;
-    }
-    console.error("ErrorBoundary caught:", err, info);
-  }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="h-screen flex flex-col items-center justify-center bg-background gap-4">
-          <p className="text-destructive font-semibold">Algo salió mal</p>
-          <p className="text-sm text-muted-foreground max-w-sm text-center">{this.state.error}</p>
-          <button
-            className="text-xs bg-primary text-primary-foreground px-4 py-2 rounded-md"
-            onClick={() => { this.setState({ hasError: false, error: "" }); window.location.href = "/dashboard"; }}
-          >Volver al inicio</button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
 
 import LandingPage from "@/pages/landing";
 import InvitePage from "@/pages/invite";
@@ -170,9 +121,7 @@ function App() {
       <TooltipProvider disableHoverableContent skipDelayDuration={0} delayDuration={0}>
         <WouterRouter base={import.meta.env.BASE_URL?.replace(/\/$/, "") || ""}>
           <AuthProvider>
-            <ErrorBoundary>
-              <AppRoutes />
-            </ErrorBoundary>
+            <AppRoutes />
           </AuthProvider>
         </WouterRouter>
         <Toaster />
