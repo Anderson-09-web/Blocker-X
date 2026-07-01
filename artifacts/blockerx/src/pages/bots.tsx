@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
-import { Plus, Play, Square, RotateCcw, Trash2, ExternalLink, TerminalSquare, CheckCircle, ChevronRight, Code2, Cpu, RefreshCw } from "lucide-react";
+import { Plus, Play, Square, RotateCcw, Trash2, ExternalLink, TerminalSquare, CheckCircle, ChevronRight, Code2, Cpu, RefreshCw, Users } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 function statusBadge(status: string) {
@@ -358,7 +358,14 @@ export default function BotsPage() {
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
-                    <CardTitle className="text-base font-semibold truncate">{bot.name}</CardTitle>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <CardTitle className="text-base font-semibold truncate">{bot.name}</CardTitle>
+                      {bot.isShared && (
+                        <span className="text-xs px-2 py-0.5 rounded-full border font-medium bg-purple-500/15 text-purple-400 border-purple-500/20 flex items-center gap-1 shrink-0">
+                          <Users className="w-2.5 h-2.5" /> Compartido
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       {bot.language === "python"
                         ? <Cpu className="w-3 h-3 text-blue-400" />

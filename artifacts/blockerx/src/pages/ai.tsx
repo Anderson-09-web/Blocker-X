@@ -91,13 +91,30 @@ function AgentActionsList({ actions }: { actions: { filename: string; type: stri
   );
 }
 
+const SESSION_KEY = "bx_ai_messages";
+
+function loadMessages(): Message[] {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveMessages(msgs: Message[]) {
+  try {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(msgs));
+  } catch {}
+}
+
 export default function AiPage() {
   const { data: usage } = useGetAIUsage();
   const { data: bots } = useListBots();
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessagesRaw] = useState<Message[]>(loadMessages);
   const [input, setInput] = useState("");
   const [language, setLanguage] = useState("python");
   const [selectedBotId, setSelectedBotId] = useState<string>("none");
@@ -105,6 +122,14 @@ export default function AiPage() {
   const [agentMode, setAgentMode] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const setMessages = (updater: Message[] | ((prev: Message[]) => Message[])) => {
+    setMessagesRaw(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      saveMessages(next);
+      return next;
+    });
+  };
 
   const activeBotId = selectedBotId !== "none" ? selectedBotId : null;
   const selectedBot = Array.isArray(bots) ? bots.find((b: any) => b.id === selectedBotId) : undefined;

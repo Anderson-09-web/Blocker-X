@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, startTransition } from "react";
 import { useBroadcastAnnouncement } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -51,7 +51,7 @@ export default function AdminBroadcastPage() {
           </div>
           <div>
             <Label>Type</Label>
-            <Select value={form.type} onValueChange={v => { const val = v; setTimeout(() => setForm(f=>({...f, type: val})), 0); }}>
+            <Select value={form.type} onValueChange={v => { startTransition(() => setForm(f=>({...f, type: v}))); }}>
               <SelectTrigger className="mt-1" data-testid="select-broadcast-type">
                 <SelectValue />
               </SelectTrigger>
