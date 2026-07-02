@@ -9,7 +9,7 @@ const router = Router();
 
 const FREE_DAILY_LIMIT = 5;
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
-const GROQ_MODEL = "llama-3.3-70b-versatile";
+const GROQ_MODEL = "deepseek-r1-distill-llama-70b";
 
 function getStartOfToday(): Date {
   const d = new Date();
