@@ -73,3 +73,68 @@ import runpy as _runpy
 _runpy.run_path(${quotedMain}, run_name="__main__")
 `;
 }
+
+/**
+ * bx_config.py — helper de configuración persistente para bots.
+ *
+ * Reemplaza la lectura/escritura de JSON local con llamadas al API interno de
+ * BlockerX, de modo que la configuración se guarda en R2 y sobrevive reinicios
+ * y re-deploys sin necesidad de cambiar la lógica del bot.
+ *
+ * Uso en el bot:
+ *   from bx_config import load_config, save_config
+ *
+ *   config = load_config("bienvenida")   # equivale a _load("data/bienvenida_config.json")
+ *   save_config("bienvenida", config)    # equivale a _save(...)
+ */
+export function getBxConfigPy(): string {
+  return `\
+# bx_config.py — generado por BlockerX, no editar
+# Helper para persistir configuración en R2 (sobrevive reinicios y re-deploys).
+import os as _os
+import json as _json
+import urllib.request as _req
+import urllib.error as _uerr
+
+_BX_API_URL      = _os.getenv("BX_API_URL", "http://127.0.0.1:3001")
+_BX_BOT_ID       = _os.getenv("BX_BOT_ID", "")
+_BX_INTERNAL_TOKEN = _os.getenv("BX_INTERNAL_TOKEN", "")
+
+
+def _headers() -> dict:
+    return {
+        "Content-Type": "application/json",
+        "X-Bot-Id": _BX_BOT_ID,
+        "X-Bot-Token": _BX_INTERNAL_TOKEN,
+    }
+
+
+def load_config(key: str) -> dict:
+    """Carga la configuración guardada en R2 para la clave dada.
+    Retorna un dict vacío si no existe todavía."""
+    url = f"{_BX_API_URL}/api/bot-internal/config/{key}"
+    try:
+        request = _req.Request(url, headers=_headers(), method="GET")
+        with _req.urlopen(request, timeout=5) as resp:
+            data = _json.loads(resp.read().decode())
+            return data.get("data", {})
+    except Exception as e:
+        print(f"[bx_config] load_config('{key}') error: {e}")
+        return {}
+
+
+def save_config(key: str, data: dict) -> bool:
+    """Guarda el dict en R2 bajo la clave dada.
+    Retorna True si tuvo éxito, False en caso de error."""
+    url = f"{_BX_API_URL}/api/bot-internal/config/{key}"
+    payload = _json.dumps(data, ensure_ascii=False).encode()
+    try:
+        request = _req.Request(url, data=payload, headers=_headers(), method="PUT")
+        with _req.urlopen(request, timeout=5) as resp:
+            result = _json.loads(resp.read().decode())
+            return result.get("ok", False)
+    except Exception as e:
+        print(f"[bx_config] save_config('{key}') error: {e}")
+        return False
+`;
+}

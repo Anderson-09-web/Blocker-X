@@ -6,13 +6,21 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Send, Bot, Cpu, FolderCode, FileCode, Loader2, ExternalLink, Zap, FileEdit, Trash2, CheckCircle, Files } from "lucide-react";
+import {
+  Send, Bot, Cpu, FolderCode, FileCode, Loader2, ExternalLink, Zap,
+  FileEdit, Trash2, CheckCircle, Files, AlertCircle, CheckCheck, X
+} from "lucide-react";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
   agentActions?: { filename: string; type: string; success: boolean; error?: string }[];
   isAgent?: boolean;
+}
+
+interface AgentPlan {
+  explanation: string;
+  actions: { type: string; filename: string; content?: string }[];
 }
 
 function MarkdownBlock({ content }: { content: string }) {
@@ -67,14 +75,6 @@ function renderInline(text: string): React.ReactNode {
   });
 }
 
-function extractCodeBlocks(content: string): { lang: string; code: string }[] {
-  const blocks: { lang: string; code: string }[] = [];
-  const regex = /```(\w*)\n([\s\S]*?)```/g;
-  let match;
-  while ((match = regex.exec(content)) !== null) blocks.push({ lang: match[1], code: match[2] });
-  return blocks;
-}
-
 function AgentActionsList({ actions }: { actions: { filename: string; type: string; success: boolean; error?: string }[] }) {
   if (!actions || actions.length === 0) return null;
   return (
@@ -87,6 +87,95 @@ function AgentActionsList({ actions }: { actions: { filename: string; type: stri
           {a.success ? <CheckCircle className="w-3 h-3 ml-auto" /> : <span className="ml-auto">Error: {a.error}</span>}
         </div>
       ))}
+    </div>
+  );
+}
+
+// Cycling thinking-step labels shown while the agent is working
+const THINKING_STEPS = [
+  "🔍 Analizando tu solicitud...",
+  "📂 Leyendo archivos del proyecto...",
+  "⚡ Generando código optimizado...",
+  "📋 Preparando plan de implementación...",
+  "🧠 Revisando la integración entre archivos...",
+];
+
+function ThinkingIndicator({ agentMode }: { agentMode: boolean }) {
+  const [stepIdx, setStepIdx] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => setStepIdx(i => (i + 1) % THINKING_STEPS.length), 2200);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="flex justify-start">
+      <div className="bg-accent/30 border border-border/40 rounded-2xl rounded-bl-sm px-4 py-3 max-w-xs">
+        <div className="flex gap-2 items-center mb-2">
+          {agentMode && <Zap className="w-3 h-3 text-primary animate-pulse shrink-0" />}
+          <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: "0s" }} />
+          <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: "0.15s" }} />
+          <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: "0.3s" }} />
+        </div>
+        {agentMode && (
+          <p className="text-xs text-muted-foreground transition-all duration-500">{THINKING_STEPS[stepIdx]}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Confirmation card shown after agent returns a plan */
+function AgentConfirmCard({
+  plan,
+  onConfirm,
+  onCancel,
+  isApplying,
+}: {
+  plan: AgentPlan;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isApplying: boolean;
+}) {
+  return (
+    <div className="bg-accent/30 border border-primary/30 rounded-2xl rounded-bl-sm px-4 py-4 max-w-[90%]">
+      <MarkdownBlock content={plan.explanation} />
+      <div className="mt-4 border-t border-border/30 pt-3">
+        <p className="text-sm font-semibold mb-2 text-primary flex items-center gap-2">
+          <FileEdit className="w-4 h-4 shrink-0" />
+          ¿Quieres implementar estos cambios en los siguientes archivos?
+        </p>
+        <div className="space-y-1.5 mb-4">
+          {plan.actions.map((a, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs bg-black/20 border border-border/30 rounded px-2 py-1.5">
+              {a.type === "write" ? <FileEdit className="w-3 h-3 text-blue-400 shrink-0" /> : <Trash2 className="w-3 h-3 text-red-400 shrink-0" />}
+              <code className="font-mono text-green-300">{a.filename}</code>
+              <span className="ml-auto text-muted-foreground/60">{a.type === "write" ? "crear/editar" : "eliminar"}</span>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            onClick={onConfirm}
+            disabled={isApplying}
+            className="flex-1 gap-2"
+          >
+            {isApplying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCheck className="w-3.5 h-3.5" />}
+            {isApplying ? "Aplicando..." : "Confirmar e implementar"}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onCancel}
+            disabled={isApplying}
+            className="gap-2"
+          >
+            <X className="w-3.5 h-3.5" />
+            Cancelar
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -121,6 +210,8 @@ export default function AiPage() {
   const [selectedFilePath, setSelectedFilePath] = useState<string>("none");
   const [agentMode, setAgentMode] = useState(false);
   const [isPending, setIsPending] = useState(false);
+  const [isApplying, setIsApplying] = useState(false);
+  const [pendingPlan, setPendingPlan] = useState<AgentPlan | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const setMessages = (updater: Message[] | ((prev: Message[]) => Message[])) => {
@@ -138,23 +229,24 @@ export default function AiPage() {
   });
   const allFiles = Array.isArray(fileList) ? fileList.filter((f: any) => f.type === "file") : [];
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
-  // Reset file context when the selected bot changes (separate tick to avoid Radix portal conflicts)
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, pendingPlan]);
   useEffect(() => { setSelectedFilePath("none"); }, [selectedBotId]);
   useEffect(() => {
     if (selectedBot) setLanguage((selectedBot as any).language === "python" ? "python" : "javascript");
   }, [selectedBotId]);
 
   const handleSend = async () => {
-    if (!input.trim() || isPending) return;
+    if (!input.trim() || isPending || isApplying) return;
     const userMsg = input.trim();
     setMessages(prev => [...prev, { role: "user", content: userMsg }]);
     setInput("");
     setIsPending(true);
+    setPendingPlan(null);
 
     try {
       if (agentMode && activeBotId) {
-        const res = await fetch("/api/ai/agent", {
+        // Phase 1: get the plan (no files written yet)
+        const res = await fetch("/api/ai/agent/plan", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -166,16 +258,8 @@ export default function AiPage() {
           setMessages(prev => [...prev, { role: "assistant", content: `❌ ${msg}` }]);
           toast({ title: msg, variant: "destructive" });
         } else {
-          setMessages(prev => [...prev, {
-            role: "assistant",
-            content: data.explanation || "Tarea completada.",
-            agentActions: data.actions,
-            isAgent: true,
-          }]);
-          if (data.actions?.some((a: any) => a.success)) {
-            refetchFiles();
-            qc.invalidateQueries({ queryKey: ["listFiles"] });
-          }
+          // Show the plan — user must confirm before files are written
+          setPendingPlan({ explanation: data.explanation, actions: data.actions });
           qc.invalidateQueries({ queryKey: ["getAIUsage"] });
         }
       } else {
@@ -200,11 +284,54 @@ export default function AiPage() {
           qc.invalidateQueries({ queryKey: ["getAIUsage"] });
         }
       }
-    } catch (err) {
+    } catch {
       setMessages(prev => [...prev, { role: "assistant", content: "❌ Error de conexión. Intenta de nuevo." }]);
     } finally {
       setIsPending(false);
     }
+  };
+
+  const handleConfirmPlan = async () => {
+    if (!pendingPlan || !activeBotId) return;
+    setIsApplying(true);
+    try {
+      const res = await fetch("/api/ai/agent/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ botId: activeBotId, actions: pendingPlan.actions }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const msg = data.error || "Error al aplicar cambios";
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: `❌ ${msg}`,
+        }]);
+        toast({ title: msg, variant: "destructive" });
+      } else {
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: pendingPlan.explanation,
+          agentActions: data.actions,
+          isAgent: true,
+        }]);
+        if (data.actions?.some((a: any) => a.success)) {
+          refetchFiles();
+          qc.invalidateQueries({ queryKey: ["listFiles"] });
+        }
+      }
+    } catch {
+      setMessages(prev => [...prev, { role: "assistant", content: "❌ Error al aplicar. Intenta de nuevo." }]);
+    } finally {
+      setIsApplying(false);
+      setPendingPlan(null);
+    }
+  };
+
+  const handleCancelPlan = () => {
+    setPendingPlan(null);
+    setMessages(prev => [...prev, { role: "assistant", content: "❌ Implementación cancelada." }]);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -214,7 +341,7 @@ export default function AiPage() {
   const usageCount = (usage as any)?.count || 0;
   const usageLimit = (usage as any)?.limit;
   const remaining = usageLimit ? usageLimit - usageCount : null;
-  const isDisabled = remaining === 0 || isPending;
+  const isDisabled = remaining === 0 || isPending || isApplying;
 
   return (
     <div className="space-y-4 h-full flex flex-col">
@@ -284,7 +411,7 @@ export default function AiPage() {
           <Button
             variant={agentMode ? "default" : "outline"}
             className={`w-full h-9 text-sm gap-2 ${agentMode ? "bg-primary" : "bg-card/60 border-border/40"}`}
-            onClick={() => setAgentMode(!agentMode)}
+            onClick={() => { setAgentMode(!agentMode); setPendingPlan(null); }}
             disabled={selectedBotId === "none"}
             title={selectedBotId === "none" ? "Selecciona un proyecto para usar el modo agente" : ""}
           >
@@ -297,11 +424,11 @@ export default function AiPage() {
       {agentMode && activeBotId && (
         <div className="bg-primary/5 border border-primary/30 rounded-lg px-4 py-2.5 text-sm flex items-center gap-2 flex-wrap">
           <Zap className="w-4 h-4 text-primary shrink-0" />
-          <span><strong>Modo Agente activado</strong> — La IA leerá tus archivos y creará o editará lo que necesite automáticamente.</span>
+          <span><strong>Modo Agente activado</strong> — La IA analizará tu proyecto, generará un plan y te pedirá confirmación antes de escribir cualquier archivo.</span>
         </div>
       )}
 
-      {/* File panel — shows current bot files so the user can see what the AI creates */}
+      {/* File panel — shows current bot files */}
       {activeBotId && allFiles.length > 0 && (
         <div className="bg-card/40 border border-border/40 rounded-lg px-4 py-2.5">
           <div className="flex items-center gap-2 mb-2">
@@ -345,7 +472,7 @@ export default function AiPage() {
 
       <Card className="flex-1 bg-card/60 border-border/40 flex flex-col overflow-hidden">
         <CardContent className="flex-1 overflow-y-auto p-4 space-y-4" style={{ minHeight: "300px", maxHeight: "55vh" }}>
-          {messages.length === 0 && (
+          {messages.length === 0 && !pendingPlan && (
             <div className="flex flex-col items-center justify-center h-full gap-4 py-12">
               <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
                 {agentMode ? <Zap className="w-7 h-7 text-primary" /> : <Bot className="w-7 h-7 text-primary" />}
@@ -354,7 +481,7 @@ export default function AiPage() {
                 <p className="font-medium">{agentMode ? "Agente IA Autónomo" : "Asistente IA para Discord Bots"}</p>
                 <p className="text-sm text-muted-foreground mt-1">
                   {agentMode
-                    ? `Dile qué sistema quieres y lo crearé directamente en ${(selectedBot as any)?.name}.`
+                    ? `Dile qué sistema quieres. La IA planificará los archivos y te pedirá confirmación antes de implementar en ${(selectedBot as any)?.name}.`
                     : selectedBotId !== "none"
                       ? `Pregunta sobre ${(selectedBot as any)?.name}. Puedo leer y escribir archivos del bot directamente.`
                       : "Selecciona un proyecto arriba o pregunta en general sobre bots."}
@@ -371,40 +498,39 @@ export default function AiPage() {
             </div>
           )}
 
-          {messages.map((msg, i) => {
-            const codeBlocks = msg.role === "assistant" && !msg.isAgent ? extractCodeBlocks(msg.content) : [];
-            return (
-              <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
-                  msg.role === "user"
-                    ? "bg-primary text-primary-foreground rounded-br-sm"
-                    : "bg-accent/30 text-foreground border border-border/40 rounded-bl-sm"
-                }`}>
-                  {msg.role === "assistant"
-                    ? <MarkdownBlock content={msg.content} />
-                    : <p className="whitespace-pre-wrap break-words">{msg.content}</p>
-                  }
-                  {/* Agent mode: show applied files */}
-                  {msg.isAgent && msg.agentActions && (
-                    <AgentActionsList actions={msg.agentActions} />
-                  )}
-                </div>
-              </div>
-            );
-          })}
-
-          {isPending && (
-            <div className="flex justify-start">
-              <div className="bg-accent/30 border border-border/40 rounded-2xl rounded-bl-sm px-4 py-3">
-                <div className="flex gap-1 items-center">
-                  {agentMode && <Zap className="w-3 h-3 text-primary mr-1 animate-pulse" />}
-                  <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: "0s" }} />
-                  <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: "0.15s" }} />
-                  <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: "0.3s" }} />
-                </div>
+          {messages.map((msg, i) => (
+            <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
+                msg.role === "user"
+                  ? "bg-primary text-primary-foreground rounded-br-sm"
+                  : "bg-accent/30 text-foreground border border-border/40 rounded-bl-sm"
+              }`}>
+                {msg.role === "assistant"
+                  ? <MarkdownBlock content={msg.content} />
+                  : <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                }
+                {msg.isAgent && msg.agentActions && (
+                  <AgentActionsList actions={msg.agentActions} />
+                )}
               </div>
             </div>
+          ))}
+
+          {/* Thinking indicator */}
+          {isPending && <ThinkingIndicator agentMode={agentMode} />}
+
+          {/* Plan confirmation card — shown after agent returns plan */}
+          {pendingPlan && !isPending && (
+            <div className="flex justify-start">
+              <AgentConfirmCard
+                plan={pendingPlan}
+                onConfirm={handleConfirmPlan}
+                onCancel={handleCancelPlan}
+                isApplying={isApplying}
+              />
+            </div>
           )}
+
           <div ref={bottomRef} />
         </CardContent>
 
@@ -415,21 +541,26 @@ export default function AiPage() {
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={
-                agentMode && activeBotId
-                  ? `Dile al agente qué hacer en ${(selectedBot as any)?.name}... (ej: "crea un sistema de tickets completo con canales")`
-                  : selectedBotId !== "none"
-                    ? `Pregunta sobre ${(selectedBot as any)?.name}... (ej: "agrega un sistema de economía")`
-                    : "Pregunta sobre comandos, eventos, slash commands, permisos..."
+                pendingPlan
+                  ? "Confirma o cancela el plan anterior antes de enviar otro mensaje..."
+                  : agentMode && activeBotId
+                    ? `Dile al agente qué hacer en ${(selectedBot as any)?.name}... (ej: "crea un sistema de tickets completo con canales")`
+                    : selectedBotId !== "none"
+                      ? `Pregunta sobre ${(selectedBot as any)?.name}... (ej: "agrega un sistema de economía")`
+                      : "Pregunta sobre comandos, eventos, slash commands, permisos..."
               }
               className="flex-1 resize-none bg-background/50 border border-input rounded-md px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
               rows={2}
-              disabled={isDisabled}
+              disabled={isDisabled || !!pendingPlan}
             />
-            <Button onClick={handleSend} disabled={isDisabled || !input.trim()} className="self-end">
+            <Button onClick={handleSend} disabled={isDisabled || !input.trim() || !!pendingPlan} className="self-end">
               <Send className="w-4 h-4" />
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground mt-2">Enter para enviar · Shift+Enter para nueva línea{agentMode ? " · Modo Agente: crea archivos automáticamente" : ""}</p>
+          <p className="text-xs text-muted-foreground mt-2">
+            Enter para enviar · Shift+Enter para nueva línea
+            {agentMode ? " · Modo Agente: planifica y pide confirmación antes de escribir archivos" : ""}
+          </p>
         </div>
       </Card>
     </div>

@@ -62,6 +62,135 @@ async function callGroq(messages: { role: string; content: string }[], maxTokens
   return { content: data.choices[0]?.message?.content || "", tokens: data.usage?.total_tokens || 0 };
 }
 
+/** Validate and sanitise a filename from AI output. Returns null if rejected. */
+function sanitiseFilename(raw: string): string | null {
+  const name = raw.replace(/\\/g, "/").trim();
+  if (
+    name.startsWith("/") ||
+    name.includes("..") ||
+    name.includes("//") ||
+    !/^[a-zA-Z0-9][a-zA-Z0-9._\-/]*$/.test(name) ||
+    name.split("/").some(seg => seg === "" || seg === "." || seg === "..")
+  ) return null;
+  return name;
+}
+
+/** Shared agent system prompt builder */
+function buildAgentSystemPrompt(
+  lang: string,
+  ext: string,
+  language: string,
+  mainFile: string,
+  botContext: string,
+  existingFilesContext: string,
+): string {
+  return `Eres un agente autónomo desarrollador de bots de Discord especializado en ${lang}.
+Tu trabajo es analizar la tarea del usuario con profundidad, diseñar una solución completa, y generar el código necesario.
+${botContext}${existingFilesContext}
+
+PROCESO DE ANÁLISIS (sigue estos pasos mentalmente antes de responder):
+1. Comprende exactamente qué sistema pide el usuario y qué componentes necesita.
+2. Revisa los archivos existentes para evitar duplicados y mantener integración coherente.
+3. Determina qué archivos crear, cuáles modificar y cómo conectarlos entre sí.
+4. Genera el código completo, funcional y bien integrado.
+
+INSTRUCCIONES DE RESPUESTA:
+1. Explica con claridad (2-4 párrafos) qué vas a implementar, por qué y cómo quedará estructurado.
+2. Menciona qué archivos crearás/modificarás y su propósito.
+3. Al final, incluye el bloque JSON con todas las acciones de archivos en este formato EXACTO:
+
+[AGENT_ACTIONS]
+{
+  "actions": [
+    {"type": "write", "filename": "nombre_archivo.${ext}", "content": "CÓDIGO COMPLETO AQUÍ"},
+    {"type": "write", "filename": "otro_archivo.${ext}", "content": "CÓDIGO COMPLETO AQUÍ"}
+  ]
+}
+[/AGENT_ACTIONS]
+
+REGLAS FUNDAMENTALES:
+- El código debe ser COMPLETO y funcional, sin fragmentos ni placeholders.
+- Si modificas un archivo existente, incluye el archivo COMPLETO con los cambios integrados.
+- Para Python usa discord.py / py-cord. Para JS usa discord.js v14.
+- El token del bot viene de la env var DISCORD_TOKEN.
+- Responde SIEMPRE en español.
+- SIEMPRE incluye el bloque [AGENT_ACTIONS] con al menos un archivo.
+- Para configuraciones persistentes que no deben perderse al reiniciar el bot, usa bx_config.py (si existe en el proyecto) o guarda en una base de datos externa.
+
+REGLA DE INTEGRACIÓN:
+Cuando crees nuevos archivos de módulos/cogs/sistemas, SIEMPRE incluye también "${mainFile}" actualizado:
+
+${language === "python" ? `- Si creas cogs (archivos con "class MiCog(commands.Cog)"), en main.py usa "await bot.load_extension('nombre_archivo')" dentro de setup_hook. El main.py debe importar y cargar TODOS los cogs existentes.
+- Si creas archivos con funciones auxiliares, impórtalos en main.py.
+- El main.py siempre debe ser el punto de entrada completo y funcional.` : `- Si creas comandos en archivos separados, en index.js impórtalos y regístralos en el cliente.
+- Usa "client.commands = new Collection()" y carga los archivos de comandos.
+- El index.js siempre debe ser el punto de entrada completo.`}
+
+Ejemplo de main.py correcto con cogs:
+\`\`\`python
+import discord
+from discord.ext import commands
+import os
+
+intents = discord.Intents.all()
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+async def setup_hook():
+    await bot.load_extension("economia")
+    await bot.load_extension("moderacion")
+
+bot.setup_hook = setup_hook
+
+@bot.event
+async def on_ready():
+    print(f"Bot listo como {bot.user}")
+
+bot.run(os.getenv("DISCORD_TOKEN"))
+\`\`\``;
+}
+
+/** Read existing bot files from R2 for context */
+async function getExistingFilesContext(r2Prefix: string, ext: string): Promise<string> {
+  try {
+    const files = await r2ListFiles(r2Prefix);
+    const fileContents: string[] = [];
+    for (const f of files.filter((f: any) => f.type === "file").slice(0, 10)) {
+      try {
+        const content = await r2ReadFile(f.path);
+        if (content.length < 3000) {
+          fileContents.push(`### ${f.name}\n\`\`\`${ext}\n${content}\n\`\`\``);
+        }
+      } catch { /* skip */ }
+    }
+    return fileContents.length > 0
+      ? `\n\nArchivos actuales del bot:\n${fileContents.join("\n\n")}`
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+/** Parse the [AGENT_ACTIONS] block from AI response */
+function parseAgentActions(aiResponse: string): {
+  explanation: string;
+  rawActions: Array<{ type: string; filename: string; content?: string }>;
+} {
+  const actionsMatch = aiResponse.match(/\[AGENT_ACTIONS\]([\s\S]*?)\[\/AGENT_ACTIONS\]/);
+  const explanation = aiResponse.replace(/\[AGENT_ACTIONS\][\s\S]*?\[\/AGENT_ACTIONS\]/g, "").trim();
+  const rawActions: Array<{ type: string; filename: string; content?: string }> = [];
+
+  if (actionsMatch) {
+    try {
+      const parsed = JSON.parse(actionsMatch[1].trim()) as { actions: Array<{ type: string; filename: string; content?: string }> };
+      for (const action of parsed.actions || []) {
+        if (action.filename) rawActions.push(action);
+      }
+    } catch { /* malformed JSON — return empty actions */ }
+  }
+
+  return { explanation, rawActions };
+}
+
 // ─── Simple chat ─────────────────────────────────────────────────────────────
 router.post("/ai/chat", requireAuth, requireInvite, async (req, res): Promise<void> => {
   const user = (req as any).user;
@@ -103,8 +232,8 @@ ${context ? `Contexto adicional: ${context}` : ""}`;
   }
 });
 
-// ─── Agent mode: auto-creates/edits bot files ─────────────────────────────────
-router.post("/ai/agent", requireAuth, requireInvite, async (req, res): Promise<void> => {
+// ─── Agent: Phase 1 — plan (analyse + generate, but DO NOT write files yet) ──
+router.post("/ai/agent/plan", requireAuth, requireInvite, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const { message, botId, language = "python" } = req.body;
 
@@ -123,83 +252,10 @@ router.post("/ai/agent", requireAuth, requireInvite, async (req, res): Promise<v
 
   const lang = language === "python" ? "Python/discord.py" : "JavaScript/discord.js";
   const ext = language === "python" ? "py" : "js";
-
-  // Read ALL existing files from R2 to give AI full context
-  let existingFilesContext = "";
-  try {
-    const files = await r2ListFiles(bot.r2Prefix);
-    const fileContents: string[] = [];
-    for (const f of files.filter((f: any) => f.type === "file").slice(0, 10)) {
-      try {
-        const content = await r2ReadFile(f.path);
-        if (content.length < 3000) {
-          fileContents.push(`### ${f.name}\n\`\`\`${ext}\n${content}\n\`\`\``);
-        }
-      } catch { /* skip */ }
-    }
-    if (fileContents.length > 0) {
-      existingFilesContext = `\n\nArchivos actuales del bot:\n${fileContents.join("\n\n")}`;
-    }
-  } catch { /* ignore */ }
-
   const mainFile = language === "python" ? "main.py" : "index.js";
-  const systemPrompt = `Eres un agente autónomo desarrollador de bots de Discord especializado en ${lang}.
-Tu trabajo es EJECUTAR la tarea del usuario creando, editando o eliminando archivos del bot automáticamente.
-${botContext}${existingFilesContext}
 
-INSTRUCCIONES CRÍTICAS:
-1. Analiza la tarea del usuario y determina qué archivos necesitas crear o editar.
-2. Responde con una explicación breve (1-3 párrafos) de lo que estás haciendo.
-3. Al final, incluye un bloque JSON con todas las acciones de archivos, con este formato EXACTO:
-
-[AGENT_ACTIONS]
-{
-  "actions": [
-    {"type": "write", "filename": "nombre_archivo.${ext}", "content": "CÓDIGO COMPLETO AQUÍ"},
-    {"type": "write", "filename": "otro_archivo.${ext}", "content": "CÓDIGO COMPLETO AQUÍ"}
-  ]
-}
-[/AGENT_ACTIONS]
-
-REGLAS FUNDAMENTALES:
-- Siempre incluye el código COMPLETO y funcional, no fragmentos.
-- Si necesitas modificar un archivo existente, incluye el archivo COMPLETO con los cambios.
-- Para Python usa discord.py / py-cord. Para JS usa discord.js v14.
-- El token del bot viene de la env var DISCORD_TOKEN.
-- Responde SIEMPRE en español.
-- SIEMPRE incluye el bloque [AGENT_ACTIONS] con al menos un archivo.
-
-REGLA DE INTEGRACIÓN — MUY IMPORTANTE:
-Cuando crees nuevos archivos de módulos/cogs/sistemas, SIEMPRE debes también incluir "${mainFile}" actualizado en las acciones para que todo quede conectado:
-
-${language === "python" ? `- Si creas cogs (archivos con "class MiCog(commands.Cog)"), en main.py usa "await bot.load_extension('nombre_archivo')" dentro de async def setup_hook o un bucle de setup. El main.py debe importar y cargar TODOS los cogs que existan.
-- Si creas archivos con funciones auxiliares, impórtalos en main.py con "from nombre_archivo import función".
-- Si el sistema es autocontenido en main.py (comandos simples), ponlo todo ahí directamente.
-- El main.py siempre debe ser el punto de entrada completo y funcional que conecta todo.` : `- Si creas comandos en archivos separados, en index.js requiérelos/impórtalos y regístralos en el cliente.
-- Usa "client.commands = new Collection()" y carga los archivos de comandos desde un directorio.
-- El index.js siempre debe ser el punto de entrada completo que conecta todos los módulos.`}
-
-Ejemplo de main.py correcto cuando hay cogs:
-\`\`\`python
-import discord
-from discord.ext import commands
-import os
-
-intents = discord.Intents.all()
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-async def setup_hook():
-    await bot.load_extension("economia")   # carga economia.py
-    await bot.load_extension("moderacion") # carga moderacion.py
-
-bot.setup_hook = setup_hook
-
-@bot.event
-async def on_ready():
-    print(f"Bot listo como {bot.user}")
-
-bot.run(os.getenv("DISCORD_TOKEN"))
-\`\`\``;
+  const existingFilesContext = await getExistingFilesContext(bot.r2Prefix, ext);
+  const systemPrompt = buildAgentSystemPrompt(lang, ext, language, mainFile, botContext, existingFilesContext);
 
   try {
     const { content: aiResponse, tokens } = await callGroq([
@@ -207,59 +263,70 @@ bot.run(os.getenv("DISCORD_TOKEN"))
       { role: "user", content: message },
     ], 4000);
 
-    // Parse agent actions
-    const actionsMatch = aiResponse.match(/\[AGENT_ACTIONS\]([\s\S]*?)\[\/AGENT_ACTIONS\]/);
-    const appliedActions: { filename: string; type: string; success: boolean; error?: string }[] = [];
-    let explanation = aiResponse.replace(/\[AGENT_ACTIONS\][\s\S]*?\[\/AGENT_ACTIONS\]/g, "").trim();
+    const { explanation, rawActions } = parseAgentActions(aiResponse);
 
-    if (actionsMatch) {
-      try {
-        const parsed = JSON.parse(actionsMatch[1].trim()) as { actions: Array<{ type: string; filename: string; content?: string }> };
-        for (const action of parsed.actions || []) {
-          if (!action.filename) continue;
-          // Security: reject any path with traversal, absolute paths, or disallowed chars
-          const rawName = action.filename.replace(/\\/g, "/").trim();
-          if (
-            rawName.startsWith("/") ||
-            rawName.includes("..") ||
-            rawName.includes("//") ||
-            !/^[a-zA-Z0-9][a-zA-Z0-9._\-/]*$/.test(rawName) ||
-            rawName.split("/").some(seg => seg === "" || seg === "." || seg === "..")
-          ) {
-            appliedActions.push({ filename: rawName, type: action.type, success: false, error: "Nombre de archivo no permitido" });
-            continue;
-          }
-          const safeName = rawName;
-          const key = `${bot.r2Prefix}/${safeName}`;
-          try {
-            if (action.type === "write" && action.content !== undefined) {
-              await r2WriteFile(key, action.content);
-              appliedActions.push({ filename: safeName, type: "write", success: true });
-            } else if (action.type === "delete") {
-              await r2DeleteFile(key);
-              appliedActions.push({ filename: safeName, type: "delete", success: true });
-            }
-          } catch (e: any) {
-            appliedActions.push({ filename: safeName, type: action.type, success: false, error: e.message });
-          }
-        }
-      } catch (parseErr) {
-        req.log.warn({ parseErr }, "Failed to parse agent actions JSON");
-      }
-    }
+    // Sanitise filenames — reject invalid paths but include them in the plan with a warning
+    const actions = rawActions.map(a => {
+      const safeName = sanitiseFilename(a.filename);
+      if (!safeName) return { ...a, filename: a.filename, _rejected: true };
+      return { type: a.type, filename: safeName, content: a.content };
+    }).filter(a => !(a as any)._rejected);
 
-    await db.insert(aiUsageTable).values({ id: randomUUID(), userId: user.id, prompt: message, response: aiResponse, tokensUsed: tokens, language });
+    await db.insert(aiUsageTable).values({
+      id: randomUUID(), userId: user.id, prompt: message, response: aiResponse, tokensUsed: tokens, language,
+    });
 
     res.json({
       explanation,
-      actions: appliedActions,
+      actions,
       usageCount: usageCount + 1,
       usageLimit: user.plan === "premium" ? null : FREE_DAILY_LIMIT,
     });
   } catch (err: any) {
-    req.log.error({ err }, "AI agent error");
-    res.status(500).json({ error: "No se pudo completar la tarea. Intenta de nuevo." });
+    req.log.error({ err }, "AI agent/plan error");
+    res.status(500).json({ error: "No se pudo generar el plan. Intenta de nuevo." });
   }
+});
+
+// ─── Agent: Phase 2 — apply (write the pre-computed actions to R2) ────────────
+router.post("/ai/agent/apply", requireAuth, requireInvite, async (req, res): Promise<void> => {
+  const user = (req as any).user;
+  const { botId, actions } = req.body;
+
+  if (!botId) { res.status(400).json({ error: "botId is required" }); return; }
+  if (!Array.isArray(actions) || actions.length === 0) {
+    res.status(400).json({ error: "actions array is required" }); return;
+  }
+
+  // Verify the bot belongs to this user
+  const [bot] = await db.select().from(botsTable).where(and(eq(botsTable.id, botId), eq(botsTable.userId, user.id)));
+  if (!bot) { res.status(404).json({ error: "Bot not found" }); return; }
+
+  const appliedActions: { filename: string; type: string; success: boolean; error?: string }[] = [];
+
+  for (const action of actions) {
+    const safeName = sanitiseFilename(action.filename || "");
+    if (!safeName) {
+      appliedActions.push({ filename: action.filename, type: action.type, success: false, error: "Nombre de archivo no permitido" });
+      continue;
+    }
+    const key = `${bot.r2Prefix}/${safeName}`;
+    try {
+      if (action.type === "write" && action.content !== undefined) {
+        await r2WriteFile(key, action.content);
+        appliedActions.push({ filename: safeName, type: "write", success: true });
+      } else if (action.type === "delete") {
+        await r2DeleteFile(key);
+        appliedActions.push({ filename: safeName, type: "delete", success: true });
+      } else {
+        appliedActions.push({ filename: safeName, type: action.type, success: false, error: "Tipo de acción desconocido" });
+      }
+    } catch (e: any) {
+      appliedActions.push({ filename: safeName, type: action.type, success: false, error: e.message });
+    }
+  }
+
+  res.json({ actions: appliedActions });
 });
 
 // ─── Usage ─────────────────────────────────────────────────────────────────────

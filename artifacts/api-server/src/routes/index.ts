@@ -12,6 +12,7 @@ import aiRouter from "./ai";
 import notificationsRouter from "./notifications";
 import statsRouter from "./stats";
 import adminRouter from "./admin";
+import botInternalRouter from "./bot-internal";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(aiRouter);
 router.use(notificationsRouter);
 router.use(statsRouter);
 router.use(adminRouter);
+router.use(botInternalRouter);
 
 export default router;

@@ -5,7 +5,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 
-
 import LandingPage from "@/pages/landing";
 import InvitePage from "@/pages/invite";
 import DashboardPage from "@/pages/dashboard";
@@ -57,6 +56,37 @@ function ProtectedRoute({ component: Component, adminOnly = false }: { component
   return <Component />;
 }
 
+/**
+ * All protected/dashboard routes share ONE DashboardLayout instance.
+ * This is the key fix — previously each Route rendered its own DashboardLayout,
+ * causing the sidebar to unmount+remount (and glitch) on every navigation.
+ */
+function DashboardRoutes() {
+  return (
+    <DashboardLayout>
+      <Switch>
+        <Route path="/dashboard"><ProtectedRoute component={DashboardPage} /></Route>
+        <Route path="/bots/:botId"><ProtectedRoute component={BotDetailPage} /></Route>
+        <Route path="/bots"><ProtectedRoute component={BotsPage} /></Route>
+        <Route path="/deployments"><ProtectedRoute component={DeploymentsPage} /></Route>
+        <Route path="/storage"><ProtectedRoute component={StoragePage} /></Route>
+        <Route path="/ai"><ProtectedRoute component={AiPage} /></Route>
+        <Route path="/notifications"><ProtectedRoute component={NotificationsPage} /></Route>
+        <Route path="/profile"><ProtectedRoute component={ProfilePage} /></Route>
+        <Route path="/settings"><ProtectedRoute component={SettingsPage} /></Route>
+        <Route path="/billing"><ProtectedRoute component={BillingPage} /></Route>
+        <Route path="/admin/users"><ProtectedRoute component={AdminUsersPage} adminOnly /></Route>
+        <Route path="/admin/invites"><ProtectedRoute component={AdminInvitesPage} adminOnly /></Route>
+        <Route path="/admin/deployments"><ProtectedRoute component={AdminDeploymentsPage} adminOnly /></Route>
+        <Route path="/admin/logs"><ProtectedRoute component={AdminLogsPage} adminOnly /></Route>
+        <Route path="/admin/broadcast"><ProtectedRoute component={AdminBroadcastPage} adminOnly /></Route>
+        <Route path="/admin"><ProtectedRoute component={AdminPage} adminOnly /></Route>
+        <Route><NotFound /></Route>
+      </Switch>
+    </DashboardLayout>
+  );
+}
+
 function AppRoutes() {
   return (
     <Switch>
@@ -64,57 +94,8 @@ function AppRoutes() {
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/usage" component={UsagePoliciesPage} />
       <Route path="/invite" component={InvitePage} />
-      <Route path="/dashboard">
-        <DashboardLayout><ProtectedRoute component={DashboardPage} /></DashboardLayout>
-      </Route>
-      <Route path="/bots/:botId">
-        <DashboardLayout><ProtectedRoute component={BotDetailPage} /></DashboardLayout>
-      </Route>
-      <Route path="/bots">
-        <DashboardLayout><ProtectedRoute component={BotsPage} /></DashboardLayout>
-      </Route>
-      <Route path="/deployments">
-        <DashboardLayout><ProtectedRoute component={DeploymentsPage} /></DashboardLayout>
-      </Route>
-      <Route path="/storage">
-        <DashboardLayout><ProtectedRoute component={StoragePage} /></DashboardLayout>
-      </Route>
-      <Route path="/ai">
-        <DashboardLayout><ProtectedRoute component={AiPage} /></DashboardLayout>
-      </Route>
-      <Route path="/notifications">
-        <DashboardLayout><ProtectedRoute component={NotificationsPage} /></DashboardLayout>
-      </Route>
-      <Route path="/profile">
-        <DashboardLayout><ProtectedRoute component={ProfilePage} /></DashboardLayout>
-      </Route>
-      <Route path="/settings">
-        <DashboardLayout><ProtectedRoute component={SettingsPage} /></DashboardLayout>
-      </Route>
-      <Route path="/billing">
-        <DashboardLayout><ProtectedRoute component={BillingPage} /></DashboardLayout>
-      </Route>
-      <Route path="/admin/users">
-        <DashboardLayout><ProtectedRoute component={AdminUsersPage} adminOnly /></DashboardLayout>
-      </Route>
-      <Route path="/admin/invites">
-        <DashboardLayout><ProtectedRoute component={AdminInvitesPage} adminOnly /></DashboardLayout>
-      </Route>
-      <Route path="/admin/deployments">
-        <DashboardLayout><ProtectedRoute component={AdminDeploymentsPage} adminOnly /></DashboardLayout>
-      </Route>
-      <Route path="/admin/logs">
-        <DashboardLayout><ProtectedRoute component={AdminLogsPage} adminOnly /></DashboardLayout>
-      </Route>
-      <Route path="/admin/broadcast">
-        <DashboardLayout><ProtectedRoute component={AdminBroadcastPage} adminOnly /></DashboardLayout>
-      </Route>
-      <Route path="/admin">
-        <DashboardLayout><ProtectedRoute component={AdminPage} adminOnly /></DashboardLayout>
-      </Route>
-      <Route>
-        <DashboardLayout><NotFound /></DashboardLayout>
-      </Route>
+      {/* All other paths share one stable DashboardLayout — sidebar never remounts */}
+      <Route><DashboardRoutes /></Route>
     </Switch>
   );
 }

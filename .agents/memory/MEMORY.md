@@ -5,3 +5,5 @@
 - [Tailwind v4 dark class](tailwind-dark.md) — cannot @apply dark in CSS; must set .dark class on html via JS in main.tsx
 - [API codegen collision fix](api-codegen-collision.md) — lib/api-zod/src/index.ts excludes colliding Params types via explicit named exports
 - [Discord OAuth redirect](discord-oauth.md) — redirect URI built dynamically from REPLIT_DOMAINS/REPLIT_DEV_DOMAIN env vars in auth.ts
+- [Dashboard routing sidebar glitch](dashboard-routing.md) — root cause: each Route rendered its own DashboardLayout, remounting sidebar on every nav; fix: single DashboardLayout wrapping nested Switch
+- [Bot config persistence](bot-config-persistence.md) — bot local JSON wiped on restart; fix: bx_config.py helper + /api/bot-internal/config routes + BX_INTERNAL_TOKEN HMAC auth

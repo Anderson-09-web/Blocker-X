@@ -2,7 +2,7 @@ import { spawn, ChildProcess, execSync } from "child_process";
 import { rmSync, mkdirSync } from "fs";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
-import { getBxInjectPy, getBxRunPy } from "./bx-scripts";
+import { getBxInjectPy, getBxRunPy, getBxConfigPy } from "./bx-scripts";
 import { db, botsTable, botLogsTable, envVarsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -263,10 +263,11 @@ async function spawnBotProcess(
       }
       await addLog(botId, "info", "[System] Python dependencies installed successfully.");
 
-      // Inject BlockerX status patch — ver bx-scripts.ts para el contenido y la lógica.
+      // Inject BlockerX platform helpers — ver bx-scripts.ts para el contenido y la lógica.
       await writeFile(path.join(workDir, "_bx_inject.py"), getBxInjectPy());
       await writeFile(path.join(workDir, "_bx_run.py"), getBxRunPy(mainFile));
-      await addLog(botId, "info", "[System] Status patch injected (_bx_inject.py).");
+      await writeFile(path.join(workDir, "bx_config.py"), getBxConfigPy());
+      await addLog(botId, "info", "[System] Platform helpers injected (_bx_inject.py, bx_config.py).");
       cmd = "python3";
       args = ["-u", "_bx_run.py"];
     } else {
@@ -283,9 +284,22 @@ async function spawnBotProcess(
 
     await addLog(botId, "info", `[System] Spawning: ${cmd} ${args.join(" ")}`);
 
+    // Compute the bot-internal HMAC token so the bot can authenticate with
+    // /api/bot-internal/config endpoints to persist configuration in R2.
+    const { computeBotToken } = await import("../routes/bot-internal");
+    const bxInternalToken = computeBotToken(botId);
+    const bxApiUrl = `http://127.0.0.1:${process.env.PORT || 3001}`;
+
     const child = spawn(cmd, args, {
       cwd: workDir,
-      env: { ...process.env, ...envVars, BOT_ID: botId },
+      env: {
+        ...process.env,
+        ...envVars,
+        BOT_ID: botId,
+        BX_BOT_ID: botId,
+        BX_INTERNAL_TOKEN: bxInternalToken,
+        BX_API_URL: bxApiUrl,
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
 
