@@ -90,6 +90,22 @@ export default function LandingPage() {
           <SiDiscord className="mr-3 w-5 h-5" />
           Sign in with Discord
         </Button>
+
+        <div className="mt-10 flex items-center gap-3 text-xs text-muted-foreground/50">
+          <a
+            href="/privacy"
+            className="hover:text-muted-foreground transition-colors underline-offset-4 hover:underline"
+          >
+            Privacy Policy
+          </a>
+          <span className="opacity-50">|</span>
+          <a
+            href="/usage"
+            className="hover:text-muted-foreground transition-colors underline-offset-4 hover:underline"
+          >
+            Usage Policies
+          </a>
+        </div>
       </motion.div>
     </div>
   );
