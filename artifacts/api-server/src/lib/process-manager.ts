@@ -1,6 +1,6 @@
 import { spawn, ChildProcess, execSync } from "child_process";
-import { rmSync, mkdirSync } from "fs";
-import { writeFile, mkdir } from "fs/promises";
+import { rmSync, mkdirSync, existsSync } from "fs";
+import { writeFile, mkdir, readFile, readdir, lstat, realpath } from "fs/promises";
 import path from "path";
 import { getBxInjectPy, getBxRunPy, getBxConfigPy } from "./bx-scripts";
 import { db, botsTable, botLogsTable, envVarsTable, usersTable } from "@workspace/db";
@@ -42,11 +42,156 @@ async function addLog(botId: string, level: string, message: string): Promise<vo
   }
 }
 
+/**
+ * Platform-injected files that must never be uploaded back to R2 —
+ * they are regenerated fresh on every start.
+ */
+const BX_PLATFORM_FILES = new Set([
+  "_bx_inject.py",
+  "_bx_run.py",
+  "bx_config.py",
+]);
+
+/**
+ * Directories whose contents should never be uploaded to R2.
+ * These are large/ephemeral dependency directories.
+ */
+const SKIP_DIRS = new Set([
+  "__pycache__",
+  "node_modules",
+  ".git",
+  ".venv",
+  "venv",
+  "env",
+  ".mypy_cache",
+  ".pytest_cache",
+]);
+
+/**
+ * Walk the bot's working directory and upload every file to R2,
+ * skipping platform-injected helpers, dependency caches, and generated artifacts.
+ *
+ * This is called BEFORE wiping the directory on restart so that any files
+ * the bot wrote locally (e.g. data/bienvenida_config.json) survive the restart
+ * without requiring any code changes in the bot itself.
+ *
+ * Returns the number of files that failed to upload so the caller can decide
+ * whether to abort or proceed.
+ */
+async function syncWorkdirToR2(botId: string, r2Prefix: string, workDir: string): Promise<{ uploaded: number; failed: number }> {
+  if (!existsSync(workDir)) return { uploaded: 0, failed: 0 };
+
+  const { r2WriteBuffer } = await import("./r2");
+  const prefix = r2Prefix.endsWith("/") ? r2Prefix : r2Prefix + "/";
+  let uploaded = 0;
+  let failed = 0;
+
+  // Resolve the real absolute path of workDir once, used to prevent symlink escapes
+  let realWorkDir: string;
+  try {
+    realWorkDir = await realpath(workDir);
+  } catch (e) {
+    // If we can't resolve workDir itself, treat the entire sync as failed
+    logger.error({ e, workDir, botId }, "syncWorkdirToR2: cannot resolve realpath of workDir");
+    return { uploaded: 0, failed: 1 };
+  }
+
+  async function walkAndUpload(dir: string): Promise<void> {
+    let entries: string[];
+    try {
+      entries = (await readdir(dir)).sort();
+    } catch (e) {
+      // Treat unreadable directories as failures so operators know data may be missing
+      logger.warn({ e, dir }, "syncWorkdirToR2: cannot read directory, treating as failed");
+      failed++;
+      return;
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry);
+
+      // Use lstat so we can detect and skip symlinks without following them
+      let fileStat: Awaited<ReturnType<typeof lstat>>;
+      try {
+        fileStat = await lstat(fullPath);
+      } catch (e) {
+        logger.warn({ e, fullPath }, "syncWorkdirToR2: lstat failed, counting as failed");
+        failed++;
+        continue;
+      }
+
+      // Policy skip: symlinks can point outside workDir — skip, not an error
+      if (fileStat.isSymbolicLink()) continue;
+
+      if (fileStat.isDirectory()) {
+        // Policy skip: known heavy/ephemeral directories
+        if (SKIP_DIRS.has(entry)) continue;
+        await walkAndUpload(fullPath);
+      } else if (fileStat.isFile()) {
+        // Enforce path containment — resolved path must stay inside workDir
+        let realFull: string;
+        try {
+          realFull = await realpath(fullPath);
+        } catch (e) {
+          logger.warn({ e, fullPath }, "syncWorkdirToR2: realpath failed, counting as failed");
+          failed++;
+          continue;
+        }
+        if (!realFull.startsWith(realWorkDir + path.sep) && realFull !== realWorkDir) {
+          // Policy skip: path traversal guard — not counted as failure
+          logger.warn({ fullPath, realFull, realWorkDir }, "syncWorkdirToR2: file escapes workDir, skipping (policy)");
+          continue;
+        }
+
+        // Policy skips — not counted as failures (intentional exclusions)
+        if (BX_PLATFORM_FILES.has(entry)) continue;
+        if (entry.endsWith(".pyc")) continue;
+        if (fileStat.size > 50 * 1024 * 1024) {
+          logger.warn({ fullPath, size: fileStat.size }, "syncWorkdirToR2: file exceeds 50 MB limit, skipping (policy)");
+          continue;
+        }
+
+        const relativePath = path.relative(workDir, fullPath).replace(/\\/g, "/");
+        const r2Key = prefix + relativePath;
+
+        try {
+          const content = await readFile(fullPath);
+          await r2WriteBuffer(r2Key, content);
+          uploaded++;
+        } catch (e) {
+          logger.warn({ e, fullPath, r2Key }, "syncWorkdirToR2: upload failed");
+          failed++;
+        }
+      }
+    }
+  }
+
+  try {
+    await walkAndUpload(workDir);
+    logger.info({ botId, uploaded, failed }, "syncWorkdirToR2: sync complete");
+  } catch (e) {
+    logger.error({ e, botId }, "syncWorkdirToR2: unexpected error during sync");
+    failed++;
+  }
+
+  return { uploaded, failed };
+}
+
 async function downloadBotFiles(botId: string, r2Prefix: string): Promise<string> {
   const { r2Client, bucketName } = await import("./r2");
   const { ListObjectsV2Command, GetObjectCommand } = await import("@aws-sdk/client-s3");
 
   const workDir = path.join(BOT_WORK_DIR, botId);
+
+  // Before wiping the working directory, sync any files the bot may have written
+  // locally (config files, data files, etc.) back to R2 so they survive the restart.
+  const syncResult = await syncWorkdirToR2(botId, r2Prefix, workDir);
+  if (syncResult.failed > 0) {
+    // Log failures but continue — a failed upload is preferable to a bot that never restarts.
+    // The uploaded files will be present; only the failed ones are lost.
+    logger.warn({ botId, ...syncResult }, "syncWorkdirToR2: some files failed to upload before wipe");
+  }
+
   rmSync(workDir, { recursive: true, force: true });
   mkdirSync(workDir, { recursive: true });
 

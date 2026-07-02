@@ -75,17 +75,35 @@ export async function r2WriteFile(key: string, content: string, contentType = "t
   await r2Client.send(command);
 }
 
+export async function r2WriteBuffer(key: string, content: Buffer, contentType = "application/octet-stream"): Promise<void> {
+  const command = new PutObjectCommand({
+    Bucket: bucketName,
+    Key: key,
+    Body: content,
+    ContentType: contentType,
+  });
+  await r2Client.send(command);
+}
+
 export async function r2DeleteFile(key: string): Promise<void> {
   const command = new DeleteObjectCommand({ Bucket: bucketName, Key: key });
   await r2Client.send(command);
 }
 
 export async function r2DeletePrefix(prefix: string): Promise<void> {
-  const list = new ListObjectsV2Command({ Bucket: bucketName, Prefix: prefix });
-  const response = await r2Client.send(list);
-  for (const obj of response.Contents || []) {
-    if (obj.Key) await r2DeleteFile(obj.Key);
-  }
+  let continuationToken: string | undefined;
+  do {
+    const list = new ListObjectsV2Command({
+      Bucket: bucketName,
+      Prefix: prefix,
+      ContinuationToken: continuationToken,
+    });
+    const response = await r2Client.send(list);
+    for (const obj of response.Contents || []) {
+      if (obj.Key) await r2DeleteFile(obj.Key);
+    }
+    continuationToken = response.NextContinuationToken;
+  } while (continuationToken);
 }
 
 export async function r2RenameFile(oldKey: string, newKey: string): Promise<void> {
