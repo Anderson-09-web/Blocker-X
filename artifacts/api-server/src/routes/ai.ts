@@ -52,14 +52,30 @@ async function callGroq(messages: { role: string; content: string }[], maxTokens
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_API_KEY}` },
-    body: JSON.stringify({ model: GROQ_MODEL, messages, max_tokens: maxTokens, temperature: 0.7 }),
+    body: JSON.stringify({ model: GROQ_MODEL, messages, max_tokens: maxTokens, temperature: 0.6 }),
   });
   if (!response.ok) {
     const err = await response.text();
-    throw new Error(`Groq error ${response.status}: ${err.slice(0, 200)}`);
+    throw new Error(`Groq error ${response.status}: ${err.slice(0, 400)}`);
   }
-  const data = await response.json() as { choices: Array<{ message: { content: string } }>; usage: { total_tokens: number } };
-  return { content: data.choices[0]?.message?.content || "", tokens: data.usage?.total_tokens || 0 };
+  const data = await response.json() as {
+    choices: Array<{ message: { content: string; reasoning_content?: string } }>;
+    usage: { total_tokens: number };
+  };
+
+  let content = data.choices[0]?.message?.content || "";
+
+  // DeepSeek R1 and other reasoning models on Groq embed <think>...</think> blocks
+  // inside the content field. Strip them so only the actual response is parsed.
+  content = content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+
+  // If content is empty but reasoning_content exists, the model put everything in thinking.
+  // Fall back to reasoning_content (less common on Groq but can happen).
+  if (!content && data.choices[0]?.message?.reasoning_content) {
+    content = (data.choices[0].message.reasoning_content || "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  }
+
+  return { content, tokens: data.usage?.total_tokens || 0 };
 }
 
 /** Validate and sanitise a filename from AI output. Returns null if rejected. */
@@ -292,7 +308,13 @@ router.post("/ai/agent/plan", requireAuth, requireInvite, async (req, res): Prom
     const { content: aiResponse, tokens } = await callGroq([
       { role: "system", content: systemPrompt },
       { role: "user", content: message },
-    ], 4000);
+    ], 8000); // reasoning models need extra tokens to think + respond
+
+    if (!aiResponse) {
+      req.log.error("AI agent/plan: empty response from model");
+      res.status(500).json({ error: "La IA no devolvió respuesta. Intenta de nuevo." });
+      return;
+    }
 
     const { explanation, rawActions } = parseAgentActions(aiResponse);
 
@@ -314,8 +336,11 @@ router.post("/ai/agent/plan", requireAuth, requireInvite, async (req, res): Prom
       usageLimit: user.plan === "premium" ? null : FREE_DAILY_LIMIT,
     });
   } catch (err: any) {
-    req.log.error({ err }, "AI agent/plan error");
-    res.status(500).json({ error: "No se pudo generar el plan. Intenta de nuevo." });
+    req.log.error({ err, message: err?.message }, "AI agent/plan error");
+    const userMsg = err?.message?.includes("Groq error")
+      ? `Error del proveedor de IA: ${err.message.slice(0, 120)}`
+      : "No se pudo generar el plan. Intenta de nuevo.";
+    res.status(500).json({ error: userMsg });
   }
 });
 
