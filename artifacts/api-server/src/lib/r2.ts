@@ -116,6 +116,38 @@ export async function r2RenameFile(oldKey: string, newKey: string): Promise<void
   await r2DeleteFile(oldKey);
 }
 
+/**
+ * Lists ALL files under a prefix recursively (no Delimiter — returns the full tree).
+ * Useful for AI context where we need to know about files in all subdirectories.
+ */
+export async function r2ListAllFiles(prefix: string, maxFiles = 200): Promise<{ name: string; path: string; type: "file"; size?: number }[]> {
+  const normalizedPrefix = prefix.endsWith("/") ? prefix : prefix + "/";
+  const files: { name: string; path: string; type: "file"; size?: number }[] = [];
+  let continuationToken: string | undefined;
+
+  do {
+    const command = new ListObjectsV2Command({
+      Bucket: bucketName,
+      Prefix: normalizedPrefix,
+      ContinuationToken: continuationToken,
+    });
+    const response = await r2Client.send(command);
+    for (const obj of response.Contents || []) {
+      if (obj.Key) {
+        const relativeName = obj.Key.replace(normalizedPrefix, "");
+        // skip empty keys, platform files, and gitkeep markers
+        if (relativeName && !relativeName.endsWith("/") && !relativeName.endsWith(".gitkeep")) {
+          files.push({ name: relativeName, path: obj.Key, type: "file", size: obj.Size });
+        }
+      }
+      if (files.length >= maxFiles) break;
+    }
+    continuationToken = files.length < maxFiles ? response.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return files;
+}
+
 export async function r2GetPrefixSize(prefix: string): Promise<{ size: number; count: number }> {
   const list = new ListObjectsV2Command({ Bucket: bucketName, Prefix: prefix });
   const response = await r2Client.send(list);

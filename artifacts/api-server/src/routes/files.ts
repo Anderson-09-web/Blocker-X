@@ -1,8 +1,12 @@
 import { Router } from "express";
 import { db, botsTable, botSharesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
+import { rmSync } from "fs";
+import path from "path";
 import { requireAuth, requireInvite } from "../lib/auth-middleware";
-import { r2ListFiles, r2ReadFile, r2WriteFile, r2DeleteFile, r2RenameFile, r2DeletePrefix } from "../lib/r2";
+import { r2ListFiles, r2ListAllFiles, r2ReadFile, r2WriteFile, r2DeleteFile, r2RenameFile, r2DeletePrefix } from "../lib/r2";
+
+const BOT_WORK_DIR = "/tmp/blockerx-bots";
 
 const router = Router();
 
@@ -33,12 +37,18 @@ router.get("/files/:botId/list", requireAuth, requireInvite, async (req, res): P
   const user = (req as any).user;
   const botId = Array.isArray(req.params.botId) ? req.params.botId[0] : req.params.botId;
   const dirPath = (req.query.dirPath as string) || "/";
+  const recursive = req.query.recursive === "true";
   const prefix = await getBotR2Prefix(botId, user.id);
   if (!prefix) { res.status(404).json({ error: "Bot not found" }); return; }
   try {
     const fullPrefix = dirPath === "/" ? prefix : `${prefix}/${dirPath.replace(/^\//, "")}`;
-    const files = await r2ListFiles(fullPrefix);
-    res.json(files);
+    if (recursive) {
+      const files = await r2ListAllFiles(fullPrefix);
+      res.json(files);
+    } else {
+      const files = await r2ListFiles(fullPrefix);
+      res.json(files);
+    }
   } catch (err) {
     req.log.error({ err }, "Failed to list files");
     res.json([]);
@@ -71,6 +81,23 @@ router.delete("/files/:botId/delete", requireAuth, requireInvite, async (req, re
   if (!filePath?.startsWith(prefix)) { res.status(403).json({ error: "Forbidden" }); return; }
   try {
     await r2DeleteFile(filePath);
+
+    // Also remove the file from the bot's running temp directory so the bot
+    // doesn't recreate it in R2 on next restart via syncWorkdirToR2.
+    try {
+      const normalizedPrefix = prefix.endsWith("/") ? prefix : prefix + "/";
+      // Boundary-safe: filePath must start with prefix + "/" (not just prefix)
+      if (filePath.startsWith(normalizedPrefix)) {
+        const relPath = filePath.slice(normalizedPrefix.length);
+        // Resolve to an absolute path and verify it stays inside the bot's temp dir
+        const botTempDir = path.resolve(BOT_WORK_DIR, botId);
+        const candidate = path.resolve(botTempDir, relPath);
+        if (candidate.startsWith(botTempDir + path.sep) || candidate === botTempDir) {
+          rmSync(candidate, { force: true });
+        }
+      }
+    } catch { /* ignore — temp dir may not exist if bot is stopped */ }
+
     res.json({ message: "File deleted" });
   } catch (err) {
     req.log.error({ err }, "Delete failed");

@@ -224,8 +224,10 @@ export default function AiPage() {
 
   const activeBotId = selectedBotId !== "none" ? selectedBotId : null;
   const selectedBot = Array.isArray(bots) ? bots.find((b: any) => b.id === selectedBotId) : undefined;
-  const { data: fileList, refetch: refetchFiles } = useListFiles(activeBotId || "", {}, {
-    query: { queryKey: getListFilesQueryKey(activeBotId || "", {}), enabled: !!activeBotId }
+  // Use recursive=true so the file selector shows files in all subdirectories (cogs/, sistemas/, etc.)
+  const fileListParams = { recursive: "true" as const };
+  const { data: fileList, refetch: refetchFiles } = useListFiles(activeBotId || "", fileListParams as any, {
+    query: { queryKey: getListFilesQueryKey(activeBotId || "", fileListParams as any), enabled: !!activeBotId }
   });
   const allFiles = Array.isArray(fileList) ? fileList.filter((f: any) => f.type === "file") : [];
 

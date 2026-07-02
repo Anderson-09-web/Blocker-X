@@ -502,7 +502,7 @@ export default function BotDetailPage() {
           {(bot as any).status !== "running" && <Button size="sm" onClick={() => handleAction("start")}><Play className="w-3 h-3 mr-1" />Start</Button>}
           {(bot as any).status === "running" && <Button size="sm" variant="outline" onClick={() => handleAction("stop")}><Square className="w-3 h-3 mr-1" />Stop</Button>}
           <Button size="sm" variant="outline" onClick={() => handleAction("restart")}><RotateCcw className="w-3 h-3 mr-1" />Restart</Button>
-          <Button size="sm" onClick={handleDeploy} disabled={deployBot.isPending}><Rocket className="w-3 h-3 mr-1" />Deploy</Button>
+          <Link href="/deployments"><button className="inline-flex items-center justify-center gap-1 rounded-md border border-input bg-background text-sm font-medium px-3 h-8 hover:bg-accent hover:text-accent-foreground transition-colors"><Rocket className="w-3 h-3" />Historial</button></Link>
           {isOwner && (canShare ? (
             <Button size="sm" variant="outline" onClick={() => setShowShareDialog(v => !v)}>
               <Share2 className="w-3 h-3 mr-1" />Share

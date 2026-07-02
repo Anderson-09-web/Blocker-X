@@ -18,7 +18,8 @@ import {
   KeyRound,
   FileText,
   Activity,
-  MessageSquare
+  MessageSquare,
+  HeartHandshake
 } from "lucide-react";
 
 interface NavItem {
@@ -131,6 +132,20 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
         <NavGroup title="Tools" items={toolsNav} location={location} onNavigate={onNavigate} />
         <NavGroup title="Account" items={accountNav} location={location} onNavigate={onNavigate} />
         {user?.isAdmin && <NavGroup title="Admin" items={adminNav} location={location} onNavigate={onNavigate} />}
+
+        {/* Support server */}
+        <div className="mb-6">
+          <a
+            href="https://discord.gg/cf2pNF7gh8"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={onNavigate}
+            className="flex items-center gap-3 px-4 py-2 text-sm font-medium rounded-md transition-colors text-muted-foreground hover:text-foreground hover:bg-accent/50"
+          >
+            <HeartHandshake className="w-4 h-4 shrink-0 text-primary" />
+            Support Server
+          </a>
+        </div>
       </div>
 
       <div className="p-4 border-t border-border shrink-0">

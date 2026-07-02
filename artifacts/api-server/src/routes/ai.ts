@@ -3,7 +3,7 @@ import { db, aiUsageTable, botsTable } from "@workspace/db";
 import { eq, count, and, gte } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, requireInvite } from "../lib/auth-middleware";
-import { r2ReadFile, r2WriteFile, r2ListFiles, r2DeleteFile } from "../lib/r2";
+import { r2ReadFile, r2WriteFile, r2ListAllFiles, r2DeleteFile } from "../lib/r2";
 
 const router = Router();
 
@@ -115,7 +115,16 @@ REGLAS FUNDAMENTALES:
 - El token del bot viene de la env var DISCORD_TOKEN.
 - Responde SIEMPRE en español.
 - SIEMPRE incluye el bloque [AGENT_ACTIONS] con al menos un archivo.
-- Para configuraciones persistentes que no deben perderse al reiniciar el bot, usa bx_config.py (si existe en el proyecto) o guarda en una base de datos externa.
+- Para configuraciones persistentes que no deben perderse al reiniciar el bot, usa bx_config.py (ya está disponible en el bot) o guarda en una base de datos externa.
+- PUEDES crear archivos en subcarpetas usando rutas relativas como "cogs/economia.py" o "sistemas/tickets.py".
+
+REGLA DE RUTAS DE ARCHIVOS:
+Los filenames en [AGENT_ACTIONS] pueden incluir subcarpetas. Ejemplos válidos:
+  - "main.py" (raíz)
+  - "cogs/economia.py" (subcarpeta cogs)
+  - "sistemas/moderacion.py" (subcarpeta sistemas)
+  - "utils/helpers.py" (subcarpeta utils)
+Usa subcarpetas cuando tengas múltiples cogs/módulos para mantener el código organizado.
 
 REGLA DE INTEGRACIÓN:
 Cuando crees nuevos archivos de módulos/cogs/sistemas, SIEMPRE incluye también "${mainFile}" actualizado:
@@ -149,22 +158,44 @@ bot.run(os.getenv("DISCORD_TOKEN"))
 \`\`\``;
 }
 
-/** Read existing bot files from R2 for context */
+/** Read existing bot files from R2 for context — reads ALL files recursively */
 async function getExistingFilesContext(r2Prefix: string, ext: string): Promise<string> {
   try {
-    const files = await r2ListFiles(r2Prefix);
+    const allFiles = await r2ListAllFiles(r2Prefix, 60);
+    // Skip platform-injected and gitkeep files
+    const userFiles = allFiles.filter(f =>
+      !["_bx_inject.py", "_bx_run.py", "bx_config.py"].includes(f.name.split("/").pop() || "") &&
+      !f.name.endsWith(".gitkeep") &&
+      !f.name.startsWith("_config/")
+    );
+
+    // Build file tree summary (all files, even if we don't read content)
+    const fileTree = userFiles.map(f => `  - ${f.name}`).join("\n");
+
+    // Read content for source files (not JSON data), limit 12 files, 3000 chars each
+    const SOURCE_EXTS = [".py", ".js", ".ts", ".json", ".txt", ".md", ".yaml", ".yml", ".toml", ".cfg", ".ini", ".env"];
+    const readableFiles = userFiles
+      .filter(f => SOURCE_EXTS.some(e => f.name.endsWith(e)) && (f.size || 0) < 60000)
+      .slice(0, 12);
+
     const fileContents: string[] = [];
-    for (const f of files.filter((f: any) => f.type === "file").slice(0, 10)) {
+    for (const f of readableFiles) {
       try {
         const content = await r2ReadFile(f.path);
         if (content.length < 3000) {
-          fileContents.push(`### ${f.name}\n\`\`\`${ext}\n${content}\n\`\`\``);
+          const lang = f.name.endsWith(".py") ? "python" : f.name.endsWith(".js") ? "javascript" : ext;
+          fileContents.push(`### ${f.name}\n\`\`\`${lang}\n${content}\n\`\`\``);
         }
       } catch { /* skip */ }
     }
-    return fileContents.length > 0
-      ? `\n\nArchivos actuales del bot:\n${fileContents.join("\n\n")}`
-      : "";
+
+    if (userFiles.length === 0) return "";
+
+    let ctx = `\n\nEstructura de archivos del bot:\n${fileTree}`;
+    if (fileContents.length > 0) {
+      ctx += `\n\nContenido de los archivos:\n${fileContents.join("\n\n")}`;
+    }
+    return ctx;
   } catch {
     return "";
   }

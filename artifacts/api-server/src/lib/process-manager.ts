@@ -68,6 +68,25 @@ const SKIP_DIRS = new Set([
 ]);
 
 /**
+ * Maximum number of files to upload in a single syncWorkdirToR2 pass.
+ * Prevents bots that generate massive guild-data JSON files (one per server)
+ * from bloating R2 and slowing down restarts.
+ */
+const MAX_SYNC_FILES = 150;
+
+/**
+ * Returns true for directory names that look like Discord/numeric IDs.
+ * These directories are created automatically by bots to store per-guild data
+ * (e.g. "1234567890/economy.json") and should not be synced to R2 —
+ * use bx_config.py for persistent data instead.
+ */
+function isNumericIdDir(name: string): boolean {
+  // Discord snowflakes are 17–20 digits. Skip directories with these names
+  // as they are per-guild data folders, not source code.
+  return /^\d{17,20}$/.test(name);
+}
+
+/**
  * Walk the bot's working directory and upload every file to R2,
  * skipping platform-injected helpers, dependency caches, and generated artifacts.
  *
@@ -78,13 +97,15 @@ const SKIP_DIRS = new Set([
  * Returns the number of files that failed to upload so the caller can decide
  * whether to abort or proceed.
  */
-async function syncWorkdirToR2(botId: string, r2Prefix: string, workDir: string): Promise<{ uploaded: number; failed: number }> {
-  if (!existsSync(workDir)) return { uploaded: 0, failed: 0 };
+async function syncWorkdirToR2(botId: string, r2Prefix: string, workDir: string): Promise<{ uploaded: number; failed: number; skipped: number }> {
+  if (!existsSync(workDir)) return { uploaded: 0, failed: 0, skipped: 0 };
+
 
   const { r2WriteBuffer } = await import("./r2");
   const prefix = r2Prefix.endsWith("/") ? r2Prefix : r2Prefix + "/";
   let uploaded = 0;
   let failed = 0;
+  let skipped = 0;
 
   // Resolve the real absolute path of workDir once, used to prevent symlink escapes
   let realWorkDir: string;
@@ -93,7 +114,7 @@ async function syncWorkdirToR2(botId: string, r2Prefix: string, workDir: string)
   } catch (e) {
     // If we can't resolve workDir itself, treat the entire sync as failed
     logger.error({ e, workDir, botId }, "syncWorkdirToR2: cannot resolve realpath of workDir");
-    return { uploaded: 0, failed: 1 };
+    return { uploaded: 0, failed: 1, skipped: 0 };
   }
 
   async function walkAndUpload(dir: string): Promise<void> {
@@ -126,6 +147,13 @@ async function syncWorkdirToR2(botId: string, r2Prefix: string, workDir: string)
       if (fileStat.isDirectory()) {
         // Policy skip: known heavy/ephemeral directories
         if (SKIP_DIRS.has(entry)) continue;
+        // Policy skip: numeric-only directory names are Discord guild/user IDs.
+        // Bots that store per-guild data in folders like "1234567890/" can
+        // generate thousands of files. Use bx_config.py for persistent data instead.
+        if (isNumericIdDir(entry)) {
+          logger.info({ dir: fullPath, entry }, "syncWorkdirToR2: skipping numeric-ID directory (guild data) — use bx_config.py for persistence");
+          continue;
+        }
         await walkAndUpload(fullPath);
       } else if (fileStat.isFile()) {
         // Enforce path containment — resolved path must stay inside workDir
@@ -151,6 +179,13 @@ async function syncWorkdirToR2(botId: string, r2Prefix: string, workDir: string)
           continue;
         }
 
+        // Cap total files to avoid bots with massive data sets bloating R2
+        if (uploaded >= MAX_SYNC_FILES) {
+          skipped++;
+          logger.warn({ fullPath, botId, MAX_SYNC_FILES }, "syncWorkdirToR2: file count cap reached, skipping (policy) — use bx_config.py for persistent data");
+          continue;
+        }
+
         const relativePath = path.relative(workDir, fullPath).replace(/\\/g, "/");
         const r2Key = prefix + relativePath;
 
@@ -168,13 +203,17 @@ async function syncWorkdirToR2(botId: string, r2Prefix: string, workDir: string)
 
   try {
     await walkAndUpload(workDir);
-    logger.info({ botId, uploaded, failed }, "syncWorkdirToR2: sync complete");
+    if (skipped > 0) {
+      logger.warn({ botId, uploaded, failed, skipped }, "syncWorkdirToR2: sync complete — some files were skipped (guild data dirs or cap). Use bx_config.py for persistent data.");
+    } else {
+      logger.info({ botId, uploaded, failed }, "syncWorkdirToR2: sync complete");
+    }
   } catch (e) {
     logger.error({ e, botId }, "syncWorkdirToR2: unexpected error during sync");
     failed++;
   }
 
-  return { uploaded, failed };
+  return { uploaded, failed, skipped };
 }
 
 async function downloadBotFiles(botId: string, r2Prefix: string): Promise<string> {
