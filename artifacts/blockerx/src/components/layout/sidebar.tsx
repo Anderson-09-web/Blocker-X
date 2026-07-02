@@ -54,31 +54,19 @@ const adminNav: NavItem[] = [
   { title: "Broadcast", href: "/admin/broadcast", icon: Activity },
 ];
 
-interface SidebarContentProps {
+// NavGroup defined outside SidebarContent so React never remounts it on re-renders
+function NavGroup({
+  title,
+  items,
+  location,
+  onNavigate,
+}: {
+  title: string;
+  items: NavItem[];
+  location: string;
   onNavigate?: () => void;
-}
-
-export function SidebarContent({ onNavigate }: SidebarContentProps) {
-  const { user } = useAuth();
-  const [location] = useLocation();
-  const logoutMutation = useLogout();
-  const qc = useQueryClient();
-
-  const handleLogout = () => {
-    logoutMutation.mutate(undefined, {
-      onSuccess: () => {
-        qc.removeQueries({ queryKey: getGetMeQueryKey() });
-        qc.clear();
-        window.location.href = "/";
-      },
-      onError: () => {
-        qc.clear();
-        window.location.href = "/";
-      }
-    });
-  };
-
-  const NavGroup = ({ title, items }: { title: string; items: NavItem[] }) => (
+}) {
+  return (
     <div className="mb-6">
       <h4 className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
         {title}
@@ -105,6 +93,31 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
       </div>
     </div>
   );
+}
+
+interface SidebarContentProps {
+  onNavigate?: () => void;
+}
+
+export function SidebarContent({ onNavigate }: SidebarContentProps) {
+  const { user } = useAuth();
+  const [location] = useLocation();
+  const logoutMutation = useLogout();
+  const qc = useQueryClient();
+
+  const handleLogout = () => {
+    logoutMutation.mutate(undefined, {
+      onSuccess: () => {
+        qc.removeQueries({ queryKey: getGetMeQueryKey() });
+        qc.clear();
+        window.location.href = "/";
+      },
+      onError: () => {
+        qc.clear();
+        window.location.href = "/";
+      }
+    });
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -114,10 +127,10 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
       </div>
 
       <div className="flex-1 overflow-y-auto py-6 px-3">
-        <NavGroup title="Main" items={mainNav} />
-        <NavGroup title="Tools" items={toolsNav} />
-        <NavGroup title="Account" items={accountNav} />
-        {user?.isAdmin && <NavGroup title="Admin" items={adminNav} />}
+        <NavGroup title="Main" items={mainNav} location={location} onNavigate={onNavigate} />
+        <NavGroup title="Tools" items={toolsNav} location={location} onNavigate={onNavigate} />
+        <NavGroup title="Account" items={accountNav} location={location} onNavigate={onNavigate} />
+        {user?.isAdmin && <NavGroup title="Admin" items={adminNav} location={location} onNavigate={onNavigate} />}
       </div>
 
       <div className="p-4 border-t border-border shrink-0">

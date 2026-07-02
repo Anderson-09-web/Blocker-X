@@ -25,6 +25,8 @@ import AdminDeploymentsPage from "@/pages/admin-deployments";
 import AdminLogsPage from "@/pages/admin-logs";
 import AdminBroadcastPage from "@/pages/admin-broadcast";
 import NotFound from "@/pages/not-found";
+import PrivacyPage from "@/pages/privacy";
+import UsagePoliciesPage from "@/pages/usage-policies";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 
 const queryClient = new QueryClient({
@@ -59,6 +61,8 @@ function AppRoutes() {
   return (
     <Switch>
       <Route path="/" component={LandingPage} />
+      <Route path="/privacy" component={PrivacyPage} />
+      <Route path="/usage" component={UsagePoliciesPage} />
       <Route path="/invite" component={InvitePage} />
       <Route path="/dashboard">
         <DashboardLayout><ProtectedRoute component={DashboardPage} /></DashboardLayout>

@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Send, Bot, Cpu, FolderCode, FileCode, Loader2, ExternalLink, Zap, FileEdit, Trash2, CheckCircle } from "lucide-react";
+import { Send, Bot, Cpu, FolderCode, FileCode, Loader2, ExternalLink, Zap, FileEdit, Trash2, CheckCircle, Files } from "lucide-react";
 
 interface Message {
   role: "user" | "assistant";
@@ -298,6 +298,27 @@ export default function AiPage() {
         <div className="bg-primary/5 border border-primary/30 rounded-lg px-4 py-2.5 text-sm flex items-center gap-2 flex-wrap">
           <Zap className="w-4 h-4 text-primary shrink-0" />
           <span><strong>Modo Agente activado</strong> — La IA leerá tus archivos y creará o editará lo que necesite automáticamente.</span>
+        </div>
+      )}
+
+      {/* File panel — shows current bot files so the user can see what the AI creates */}
+      {activeBotId && allFiles.length > 0 && (
+        <div className="bg-card/40 border border-border/40 rounded-lg px-4 py-2.5">
+          <div className="flex items-center gap-2 mb-2">
+            <Files className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            <span className="text-xs font-medium text-muted-foreground">Archivos del proyecto</span>
+            <span className="ml-auto text-xs text-muted-foreground/60">{allFiles.length} archivo{allFiles.length !== 1 ? "s" : ""}</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {allFiles.map((f: any) => (
+              <span
+                key={f.path}
+                className="text-xs font-mono bg-black/20 border border-border/30 px-2 py-0.5 rounded text-green-300/80"
+              >
+                {f.path.split("/").pop()}
+              </span>
+            ))}
+          </div>
         </div>
       )}
 

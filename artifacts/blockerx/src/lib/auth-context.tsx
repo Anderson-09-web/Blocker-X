@@ -35,11 +35,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const httpStatus = (error as any)?.status ?? (error as any)?.response?.status;
       const is401 = isError && httpStatus === 401;
 
+      // Normalize to pathname only (strip any query/hash that wouter may include)
+      const pathname = location.split("?")[0].split("#")[0];
+      const PUBLIC_PATHS = ["/", "/privacy", "/usage"];
       if (
         is401 &&
         !redirectedRef.current &&
-        location !== "/" &&
-        !location.startsWith("/api/auth")
+        !PUBLIC_PATHS.includes(pathname) &&
+        !pathname.startsWith("/api/auth")
       ) {
         redirectedRef.current = true;
         setLocation("/");
