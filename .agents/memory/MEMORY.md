@@ -7,3 +7,5 @@
 - [Discord OAuth redirect](discord-oauth.md) — redirect URI built dynamically from REPLIT_DOMAINS/REPLIT_DEV_DOMAIN env vars in auth.ts
 - [Dashboard routing sidebar glitch](dashboard-routing.md) — root cause: each Route rendered its own DashboardLayout, remounting sidebar on every nav; fix: single DashboardLayout wrapping nested Switch
 - [Bot config persistence](bot-config-persistence.md) — bot local JSON wiped on restart; fix: bx_config.py helper + /api/bot-internal/config routes + BX_INTERNAL_TOKEN HMAC auth
+- [R2 source of truth — no local→R2 sync on restart](r2-source-of-truth.md) — never call syncWorkdirToR2 inside downloadBotFiles; stale local files overwrite user's R2 edits
+- [bx_data persistent KV store](bx-data-pattern.md) — bx_data.py uses /api/bot-internal/data/:scope/:entityId (R2-backed), in-memory cache; avoids per-ID JSON file sprawl

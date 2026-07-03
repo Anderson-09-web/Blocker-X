@@ -2,7 +2,7 @@ import { spawn, ChildProcess, execSync } from "child_process";
 import { rmSync, mkdirSync, existsSync } from "fs";
 import { writeFile, mkdir, readFile, readdir, lstat, realpath } from "fs/promises";
 import path from "path";
-import { getBxInjectPy, getBxRunPy, getBxConfigPy } from "./bx-scripts";
+import { getBxInjectPy, getBxRunPy, getBxConfigPy, getBxDataPy } from "./bx-scripts";
 import { db, botsTable, botLogsTable, envVarsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -50,6 +50,8 @@ const BX_PLATFORM_FILES = new Set([
   "_bx_inject.py",
   "_bx_run.py",
   "bx_config.py",
+  "bx_data.py",
+  "bx_data.db",
 ]);
 
 /**
@@ -222,15 +224,10 @@ async function downloadBotFiles(botId: string, r2Prefix: string): Promise<string
 
   const workDir = path.join(BOT_WORK_DIR, botId);
 
-  // Before wiping the working directory, sync any files the bot may have written
-  // locally (config files, data files, etc.) back to R2 so they survive the restart.
-  const syncResult = await syncWorkdirToR2(botId, r2Prefix, workDir);
-  if (syncResult.failed > 0) {
-    // Log failures but continue — a failed upload is preferable to a bot that never restarts.
-    // The uploaded files will be present; only the failed ones are lost.
-    logger.warn({ botId, ...syncResult }, "syncWorkdirToR2: some files failed to upload before wipe");
-  }
-
+  // R2 is the source of truth for bot code. User edits are saved directly to R2
+  // via the files API. We do NOT sync local → R2 here because that would overwrite
+  // intentional user edits made while the bot was running.
+  // Bot-generated runtime data (configs, etc.) should use bx_config.py / bx_data.py.
   rmSync(workDir, { recursive: true, force: true });
   mkdirSync(workDir, { recursive: true });
 
@@ -451,7 +448,8 @@ async function spawnBotProcess(
       await writeFile(path.join(workDir, "_bx_inject.py"), getBxInjectPy());
       await writeFile(path.join(workDir, "_bx_run.py"), getBxRunPy(mainFile));
       await writeFile(path.join(workDir, "bx_config.py"), getBxConfigPy());
-      await addLog(botId, "info", "[System] Platform helpers injected (_bx_inject.py, bx_config.py).");
+      await writeFile(path.join(workDir, "bx_data.py"), getBxDataPy());
+      await addLog(botId, "info", "[System] Platform helpers injected (_bx_inject.py, bx_config.py, bx_data.py).");
       cmd = "python3";
       args = ["-u", "_bx_run.py"];
     } else {

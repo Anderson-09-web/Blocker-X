@@ -109,5 +109,47 @@ router.put("/bot-internal/config/:key", requireBotAuth, async (req: any, res: an
   }
 });
 
+// GET /api/bot-internal/data/:scope/:entityId
+// Returns the JSON data for this bot + scope + entity.
+router.get("/bot-internal/data/:scope/:entityId", requireBotAuth, async (req: any, res: any): Promise<void> => {
+  const { scope, entityId } = req.params;
+  if (!isValidConfigKey(scope) || !isValidConfigKey(entityId)) {
+    res.status(400).json({ error: "Invalid scope or entityId" });
+    return;
+  }
+
+  const r2Path = `${req.bot.r2Prefix}/_bxdata/${scope}/${entityId}.json`;
+  try {
+    const content = await r2ReadFile(r2Path);
+    res.json({ ok: true, data: JSON.parse(content) });
+  } catch {
+    res.json({ ok: true, data: {} });
+  }
+});
+
+// PUT /api/bot-internal/data/:scope/:entityId
+// Saves JSON data to R2 for this bot + scope + entity.
+router.put("/bot-internal/data/:scope/:entityId", requireBotAuth, async (req: any, res: any): Promise<void> => {
+  const { scope, entityId } = req.params;
+  if (!isValidConfigKey(scope) || !isValidConfigKey(entityId)) {
+    res.status(400).json({ error: "Invalid scope or entityId" });
+    return;
+  }
+
+  const body = req.body;
+  if (typeof body !== "object" || body === null) {
+    res.status(400).json({ error: "Body must be a JSON object" });
+    return;
+  }
+
+  const r2Path = `${req.bot.r2Prefix}/_bxdata/${scope}/${entityId}.json`;
+  try {
+    await r2WriteFile(r2Path, JSON.stringify(body));
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to save data" });
+  }
+});
+
 export { computeBotToken };
 export default router;
