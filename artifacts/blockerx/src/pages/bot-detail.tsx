@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Square, RotateCcw, Rocket, Plus, Trash2, Save, Folder, FileText, ChevronLeft, Settings, BookOpen, FilePlus, FolderPlus, X, Loader2, RefreshCw, ChevronRight, FolderInput, AlertTriangle, Share2, Users, Crown } from "lucide-react";
+import { Play, Square, RotateCcw, Rocket, Plus, Trash2, Save, Folder, FileText, ChevronLeft, Settings, BookOpen, FilePlus, FolderPlus, X, Loader2, RefreshCw, ChevronRight, FolderInput, AlertTriangle, Share2, Users, Crown, Bot } from "lucide-react";
 import { Link } from "wouter";
 
 function StatusBadge({ status }: { status: string }) {
@@ -434,44 +434,64 @@ export default function BotDetailPage() {
     }
   };
 
-  const handleSaveSettings = () => {
-    const updates: any = {};
-    if (settingsName.trim()) updates.name = settingsName.trim();
-    if (settingsDesc !== undefined) updates.description = settingsDesc;
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+
+  const handleSaveSettings = async () => {
+    if (isSavingSettings) return;
+    setIsSavingSettings(true);
     const isRunning = (bot as any)?.status === "running";
-
-    updateBot.mutate({ botId, data: updates }, {
-      onSuccess: async () => {
-        const envUpdates = [
-          { key: "BOT_STATUS", value: settingsStatus },
-          { key: "BOT_ACTIVITY_TYPE", value: settingsActivityType },
-          { key: "BOT_ACTIVITY_TEXT", value: settingsActivityText.trim() },
-          ...(settingsAvatar.trim() ? [{ key: "BOT_AVATAR_URL", value: settingsAvatar.trim() }] : []),
-        ];
-        await Promise.all(
-          envUpdates.map(entry =>
-            new Promise<void>((resolve) =>
-              setEnvVar.mutate({ botId, data: entry }, { onSuccess: () => resolve(), onError: () => resolve() })
-            )
-          )
+    try {
+      // 1. Save name/description only if actually different
+      const updates: any = {};
+      if (settingsName.trim() && settingsName.trim() !== (bot as any)?.name) updates.name = settingsName.trim();
+      if (settingsDesc !== (bot as any)?.description) updates.description = settingsDesc;
+      if (Object.keys(updates).length > 0) {
+        await new Promise<void>((resolve, reject) =>
+          updateBot.mutate({ botId, data: updates }, { onSuccess: () => resolve(), onError: () => reject(new Error("update failed")) })
         );
-        qc.invalidateQueries({ queryKey: getListEnvVarsQueryKey(botId) });
+      }
 
-        setSettingsSaved(true);
-        setTimeout(() => setSettingsSaved(false), 3000);
-        if (isRunning) {
-          toast({ title: "Guardado · Reiniciando bot...", description: "La presencia se aplicará en unos segundos." });
-          restartBot.mutate({ botId }, {
-            onSuccess: () => { refresh(); toast({ title: "✅ Presencia aplicada", description: `El bot ahora muestra: ${BOT_STATUSES.find(s => s.value === settingsStatus)?.label || settingsStatus}` }); },
-            onError: () => { refresh(); toast({ title: "Guardado. Reinicia el bot manualmente para aplicar.", variant: "destructive" }); },
-          });
-        } else {
-          refresh();
-          toast({ title: "✅ Configuración guardada", description: "Inicia el bot para que los cambios surtan efecto." });
-        }
-      },
-      onError: () => toast({ title: "Error al guardar configuración", variant: "destructive" }),
-    });
+      // 2. Save presence env vars — reject if any fail
+      const envUpdates = [
+        { key: "BOT_STATUS", value: settingsStatus },
+        { key: "BOT_ACTIVITY_TYPE", value: settingsActivityType },
+        { key: "BOT_ACTIVITY_TEXT", value: settingsActivityText.trim() },
+        ...(settingsAvatar.trim() ? [{ key: "BOT_AVATAR_URL", value: settingsAvatar.trim() }] : []),
+      ];
+      await Promise.all(
+        envUpdates.map(entry =>
+          new Promise<void>((resolve, reject) =>
+            setEnvVar.mutate({ botId, data: entry }, { onSuccess: () => resolve(), onError: () => reject(new Error(`No se pudo guardar ${entry.key}`)) })
+          )
+        )
+      );
+      qc.invalidateQueries({ queryKey: getListEnvVarsQueryKey(botId) });
+
+      // 3. If bot is running, push presence update — no restart needed (~10s to apply)
+      if (isRunning) {
+        const presRes = await fetch(`/api/bots/${botId}/presence`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ status: settingsStatus, activityType: settingsActivityType, activityText: settingsActivityText.trim() }),
+        });
+        if (!presRes.ok) throw new Error("No se pudo enviar la presencia al bot");
+      }
+
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 3000);
+      refresh();
+      toast({
+        title: "✅ Guardado",
+        description: isRunning
+          ? "La presencia se aplicará en Discord en ~10 segundos."
+          : "Inicia el bot para que los cambios surtan efecto.",
+      });
+    } catch {
+      toast({ title: "Error al guardar la configuración", variant: "destructive" });
+    } finally {
+      setIsSavingSettings(false);
+    }
   };
 
   if (isLoading) return <div className="space-y-4"><Skeleton className="h-12 w-64" /><Skeleton className="h-64 w-full" /></div>;
@@ -1130,48 +1150,53 @@ export default function BotDetailPage() {
                   </div>
                 )}
 
-                {/* Code snippet — how to use presence vars in their bot */}
-                <div className="rounded-lg border border-border/30 bg-muted/20 overflow-hidden">
-                  <div className="flex items-center justify-between px-3 py-1.5 bg-muted/40 border-b border-border/30">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {lang === "python" ? "Python — leer actividad en tu bot" : "JavaScript — leer actividad en tu bot"}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground/50 font-mono">env vars</span>
+                {/* Discord-style live preview */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Vista previa en Discord</Label>
+                  <div className="bg-[#1e1f22] rounded-xl px-4 py-3 border border-white/5 flex items-center gap-3">
+                    <div className="relative shrink-0">
+                      <div className="w-10 h-10 rounded-full bg-primary/20 border border-primary/20 flex items-center justify-center">
+                        <Bot className="w-5 h-5 text-primary/60" />
+                      </div>
+                      <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[#1e1f22] ${
+                        settingsStatus === "online" ? "bg-green-500" :
+                        settingsStatus === "idle" ? "bg-yellow-400" :
+                        settingsStatus === "dnd" ? "bg-red-500" :
+                        "bg-gray-500"
+                      }`} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-white/90 truncate">{(bot as any)?.name || "Mi Bot"}</p>
+                      {settingsActivityType !== "none" && settingsActivityText.trim() ? (
+                        <p className="text-xs text-[#b5bac1] truncate">
+                          {settingsActivityType === "playing" ? "Jugando a" :
+                           settingsActivityType === "watching" ? "Viendo" :
+                           settingsActivityType === "listening" ? "Escuchando" :
+                           settingsActivityType === "streaming" ? "En directo:" :
+                           "Compitiendo en"}{" "}
+                          <span className="text-white/70 font-medium">{settingsActivityText.trim()}</span>
+                        </p>
+                      ) : settingsActivityType !== "none" ? (
+                        <p className="text-xs text-[#b5bac1]/40 italic">escribe el texto de actividad...</p>
+                      ) : (
+                        <p className="text-xs text-[#b5bac1]/40 italic">sin actividad</p>
+                      )}
+                    </div>
                   </div>
-                  <pre className="text-xs font-mono text-green-300/80 px-4 py-3 overflow-x-auto leading-5">
-                    {lang === "python" ? (
-`import os
-
-# Leído automáticamente por Blocker X — solo úsalo si quieres
-# personalizar la actividad desde tu propio código
-status = os.getenv("BOT_STATUS", "online")
-activity_type = os.getenv("BOT_ACTIVITY_TYPE", "none")
-activity_text = os.getenv("BOT_ACTIVITY_TEXT", "")
-
-# Ejemplo: "Viendo 1000 usuarios globales"
-# → Tipo: watching  Texto: 1000 usuarios globales` ) : (
-`const status = process.env.BOT_STATUS ?? 'online';
-const activityType = process.env.BOT_ACTIVITY_TYPE ?? 'none';
-const activityText = process.env.BOT_ACTIVITY_TEXT ?? '';
-
-// Ejemplo: "Escuchando lo-fi beats"
-// → Tipo: listening  Texto: lo-fi beats`)}
-                  </pre>
-                </div>
-
-                <div className="text-xs text-muted-foreground/60 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary/50 inline-block" />
-                  {(bot as any)?.status === "running"
-                    ? "Al guardar, el bot se reinicia automáticamente y aplica la presencia."
-                    : "Inicia el bot para que la presencia se aplique en Discord."}
+                  <p className="text-[11px] text-muted-foreground/40 flex items-center gap-1.5">
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${(bot as any)?.status === "running" ? "bg-green-500" : "bg-muted-foreground/30"}`} />
+                    {(bot as any)?.status === "running"
+                      ? "Cambios aplicados en Discord en ~10 segundos · sin reiniciar"
+                      : "Inicia el bot para que la presencia aparezca en Discord"}
+                  </p>
                 </div>
 
                 <Button
                   onClick={handleSaveSettings}
-                  disabled={updateBot.isPending}
-                  className={`w-full transition-all ${settingsSaved ? "bg-green-600 hover:bg-green-600 text-white" : ""}`}
+                  disabled={isSavingSettings}
+                  className={`w-full transition-colors ${settingsSaved ? "bg-green-600 hover:bg-green-600 text-white" : ""}`}
                 >
-                  {updateBot.isPending ? (
+                  {isSavingSettings ? (
                     <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Guardando...</>
                   ) : settingsSaved ? (
                     <><Save className="w-4 h-4 mr-2" />¡Guardado!</>

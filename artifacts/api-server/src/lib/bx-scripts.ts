@@ -11,16 +11,20 @@
 export function getBxInjectPy(): string {
   return `\
 # _bx_inject.py — generado por BlockerX, no editar
-# Parcha discord.Client.dispatch para aplicar presencia (status + actividad)
-# cuando el bot conecta. Compatible con Client, commands.Bot y cualquier subclase.
-#
-# Variables de entorno que controla el panel:
-#   BOT_STATUS         : online | idle | dnd | invisible  (default: online)
-#   BOT_ACTIVITY_TYPE  : playing | watching | listening | streaming | competing | none
-#   BOT_ACTIVITY_TEXT  : texto visible de la actividad
+# Aplica presencia al inicio y la actualiza en tiempo real (polling cada 10s).
+# No es necesario reiniciar el bot para cambiar estado o actividad desde el panel.
 import os as _os
 import sys as _sys
 import asyncio as _asyncio
+import json as _json
+import urllib.request as _ureq
+
+_BX_API_URL = _os.getenv("BX_API_URL", "http://127.0.0.1:3001")
+_BX_BOT_ID  = _os.getenv("BX_BOT_ID", "")
+_BX_TOKEN   = _os.getenv("BX_INTERNAL_TOKEN", "")
+
+def _bx_headers():
+    return {"X-Bot-Id": _BX_BOT_ID, "X-Bot-Token": _BX_TOKEN}
 
 try:
     import discord as _d
@@ -39,46 +43,95 @@ try:
         "competing": _d.ActivityType.competing,
     }
 
-    _bx_status   = _BX_STATUS_MAP.get(_os.getenv("BOT_STATUS", "online"), _d.Status.online)
-    _bx_act_type = _os.getenv("BOT_ACTIVITY_TYPE", "none").lower()
-    _bx_act_text = _os.getenv("BOT_ACTIVITY_TEXT", "").strip()
-
-    def _bx_build_activity():
-        if _bx_act_type == "none" or not _bx_act_text:
-            return None
-        act_enum = _BX_ACTIVITY_MAP.get(_bx_act_type)
+    def _bx_build_presence(status_str, act_type_str, act_text):
+        status = _BX_STATUS_MAP.get(status_str, _d.Status.online)
+        act_type = act_type_str.lower()
+        if act_type == "none" or not act_text.strip():
+            return status, None
+        act_enum = _BX_ACTIVITY_MAP.get(act_type)
         if act_enum is None:
+            return status, None
+        if act_type == "streaming":
+            return status, _d.Streaming(name=act_text, url="https://twitch.tv/placeholder")
+        return status, _d.Activity(type=act_enum, name=act_text)
+
+    def _bx_fetch_presence():
+        """Fetch desired presence from BlockerX panel (sync, runs in executor)."""
+        try:
+            url = f"{_BX_API_URL}/api/bot-internal/presence"
+            rq = _ureq.Request(url, headers=_bx_headers(), method="GET")
+            with _ureq.urlopen(rq, timeout=4) as resp:
+                data = _json.loads(resp.read().decode())
+            return data.get("presence")
+        except Exception:
             return None
-        if _bx_act_type == "streaming":
-            return _d.Streaming(name=_bx_act_text, url="https://twitch.tv/placeholder")
-        return _d.Activity(type=act_enum, name=_bx_act_text)
 
     _bx_orig_dispatch = _d.Client.dispatch
+    _bx_applied_update_at = None
+    _bx_poll_task = None          # guard: only one polling task per client
 
     def _bx_patched_dispatch(self, event, *args, **kwargs):
+        global _bx_applied_update_at, _bx_poll_task
         _bx_orig_dispatch(self, event, *args, **kwargs)
         if event == "ready":
-            async def _apply_presence():
+            async def _on_ready_presence():
+                global _bx_applied_update_at, _bx_poll_task
+                await _asyncio.sleep(1)
+                # Apply env-var presence on startup
+                status_str = _os.getenv("BOT_STATUS", "online")
+                act_type   = _os.getenv("BOT_ACTIVITY_TYPE", "none")
+                act_text   = _os.getenv("BOT_ACTIVITY_TEXT", "").strip()
+                st, act = _bx_build_presence(status_str, act_type, act_text)
                 try:
-                    await _asyncio.sleep(1)
-                    activity = _bx_build_activity()
-                    await self.change_presence(status=_bx_status, activity=activity)
-                    act_info = f"{_bx_act_type}:{_bx_act_text}" if activity else "sin actividad"
-                    print(
-                        f"[BlockerX] Presencia aplicada — status={_bx_status.value}, actividad={act_info}",
-                        file=_sys.stderr, flush=True,
-                    )
+                    await self.change_presence(status=st, activity=act)
+                    print(f"[BlockerX] Presencia inicial: {status_str} / {act_type}", file=_sys.stderr, flush=True)
                 except Exception as _e:
-                    print(f"[BlockerX] Presencia error: {_e}", file=_sys.stderr, flush=True)
+                    print(f"[BlockerX] Error presencia inicial: {_e}", file=_sys.stderr, flush=True)
+
+                # Cancel previous poll task on reconnect to avoid duplicates
+                if _bx_poll_task and not _bx_poll_task.done():
+                    _bx_poll_task.cancel()
+
+                async def _bx_poll_presence(client):
+                    """Poll panel every 10s and apply presence changes without restart."""
+                    global _bx_applied_update_at
+                    while True:
+                        await _asyncio.sleep(10)
+                        try:
+                            loop = _asyncio.get_event_loop()
+                            presence = await loop.run_in_executor(None, _bx_fetch_presence)
+                            if presence is None:
+                                continue
+                            updated_at = presence.get("updatedAt")
+                            if updated_at == _bx_applied_update_at:
+                                continue  # No change since last apply
+                            _bx_applied_update_at = updated_at
+                            st, act = _bx_build_presence(
+                                presence.get("status", "online"),
+                                presence.get("activityType", "none"),
+                                presence.get("activityText", ""),
+                            )
+                            await client.change_presence(status=st, activity=act)
+                            print(
+                                f"[BlockerX] Presencia en tiempo real: "
+                                f"{presence.get('status')} / {presence.get('activityType')} / {presence.get('activityText')}",
+                                file=_sys.stderr, flush=True,
+                            )
+                        except _asyncio.CancelledError:
+                            raise  # Let cancellation propagate
+                        except Exception:
+                            pass  # Never crash the bot on a poll error
+
+                _bx_poll_task = _asyncio.get_event_loop().create_task(_bx_poll_presence(self))
 
             try:
                 loop = _asyncio.get_event_loop()
-                loop.create_task(_apply_presence())
+                loop.create_task(_on_ready_presence())
             except Exception as _e:
                 print(f"[BlockerX] No se pudo programar presencia: {_e}", file=_sys.stderr, flush=True)
 
     _d.Client.dispatch = _bx_patched_dispatch
-    print("[BlockerX] Parche de presencia cargado.", file=_sys.stderr, flush=True)
+    print("[BlockerX] Parche de presencia cargado (tiempo real activado).", file=_sys.stderr, flush=True)
 
 except Exception as _bx_err:
     print(f"[BlockerX] Patch omitido: {_bx_err}", file=_sys.stderr, flush=True)

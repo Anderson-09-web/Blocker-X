@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 import { requireAuth, requireInvite } from "../lib/auth-middleware";
 import { createNotification, notifyUser } from "../lib/notifications";
 import { startBot, stopBot, restartBot, reinstallBot, getProcessStatus } from "../lib/process-manager";
+import { presenceStore } from "./bot-internal";
 import { r2WriteFile, r2DeletePrefix } from "../lib/r2";
 import { PYTHON_MAIN, PYTHON_REQUIREMENTS, JS_MAIN, JS_PACKAGE_JSON } from "../lib/templates";
 
@@ -281,6 +282,18 @@ router.post("/bots/:botId/restart", requireAuth, requireInvite, async (req, res)
     type: "info",
   });
   res.json({ message: "Bot restarting" });
+});
+
+// POST /bots/:botId/presence — apply new presence to running bot without restart (~10s)
+router.post("/bots/:botId/presence", requireAuth, requireInvite, async (req, res): Promise<void> => {
+  const botId = getBotId(req);
+  const bot = await requireBotAccess(req, res, botId);
+  if (!bot) return;
+
+  const { status = "online", activityType = "none", activityText = "" } = req.body;
+  presenceStore.set(botId, { status, activityType, activityText, updatedAt: Date.now() });
+
+  res.json({ ok: true });
 });
 
 router.post("/bots/:botId/reinstall", requireAuth, requireInvite, async (req, res): Promise<void> => {

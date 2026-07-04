@@ -151,5 +151,23 @@ router.put("/bot-internal/data/:scope/:entityId", requireBotAuth, async (req: an
   }
 });
 
+// ─── In-memory presence store ────────────────────────────────────────────────
+// Bot processes poll GET /api/bot-internal/presence every 10s.
+// The user-facing POST /api/bots/:botId/presence writes here (no restart needed).
+export interface BotPresence {
+  status: string;
+  activityType: string;
+  activityText: string;
+  updatedAt: number;
+}
+export const presenceStore = new Map<string, BotPresence>();
+
+// GET /api/bot-internal/presence
+// Polled by the running bot every 10s to pick up panel changes without restart.
+router.get("/bot-internal/presence", requireBotAuth, (req: any, res: any): void => {
+  const presence = presenceStore.get(req.bot.id) ?? null;
+  res.json({ ok: true, presence });
+});
+
 export { computeBotToken };
 export default router;
