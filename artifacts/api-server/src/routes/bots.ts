@@ -4,7 +4,7 @@ import { eq, and, desc, or } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, requireInvite } from "../lib/auth-middleware";
 import { createNotification, notifyUser } from "../lib/notifications";
-import { startBot, stopBot, restartBot, getProcessStatus } from "../lib/process-manager";
+import { startBot, stopBot, restartBot, rebuildBot, getProcessStatus } from "../lib/process-manager";
 import { r2WriteFile, r2DeletePrefix } from "../lib/r2";
 import { PYTHON_MAIN, PYTHON_REQUIREMENTS, JS_MAIN, JS_PACKAGE_JSON } from "../lib/templates";
 
@@ -256,11 +256,11 @@ router.post("/bots/:botId/stop", requireAuth, requireInvite, async (req, res): P
   if (!bot) return;
 
   await stopBot(botId);
-  await notifyUser({
+  // In-app notification only — no DM for manual stop (user initiated it themselves)
+  await createNotification({
     userId: user.id,
-    discordId: user.discordId,
-    title: "Bot Stopped",
-    message: `"${bot.name}" has been stopped.`,
+    title: `${bot.name} detenido`,
+    message: `El bot fue detenido manualmente.`,
     type: "info",
   });
   res.json({ message: "Bot stopped" });
@@ -273,14 +273,35 @@ router.post("/bots/:botId/restart", requireAuth, requireInvite, async (req, res)
   if (!bot) return;
 
   await restartBot({ ...bot, userId: bot.userId } as any, bot.userId);
-  await notifyUser({
+  // In-app notification only — the "online" DM fires automatically when the bot reconnects
+  await createNotification({
     userId: user.id,
-    discordId: user.discordId,
-    title: "Bot Restarted",
-    message: `"${bot.name}" is restarting.`,
+    title: `${bot.name} reiniciando`,
+    message: `El bot se está reiniciando. Recibirás una notificación cuando esté en línea.`,
     type: "info",
   });
   res.json({ message: "Bot restarting" });
+});
+
+router.post("/bots/:botId/rebuild", requireAuth, requireInvite, async (req, res): Promise<void> => {
+  const user = (req as any).user;
+  const botId = getBotId(req);
+  const bot = await requireBotAccess(req, res, botId);
+  if (!bot) return;
+
+  // rebuildBot: waits for clean exit, wipes workdir, then starts fresh — no race conditions
+  rebuildBot({ ...bot, userId: bot.userId } as any, bot.userId).catch((err: any) => {
+    req.log.error({ err, botId }, "Rebuild failed");
+  });
+
+  await createNotification({
+    userId: user.id,
+    title: `${bot.name} — rebuild iniciado`,
+    message: `Reinstalando dependencias desde cero. El bot estará en línea en unos momentos.`,
+    type: "info",
+  });
+
+  res.json({ message: "Rebuild started" });
 });
 
 // Share routes

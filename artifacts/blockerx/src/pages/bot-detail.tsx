@@ -3,7 +3,7 @@ import { useParams } from "wouter";
 import { useAuth } from "@/lib/auth-context";
 import {
   useGetBot, useListFiles, useGetBotLogs, useListEnvVars, useSetEnvVar, useDeleteEnvVar,
-  useReadFile, useWriteFile, useDeployBot, useListDeployments, useStartBot, useStopBot,
+  useReadFile, useWriteFile, useListDeployments, useStartBot, useStopBot,
   useRestartBot, useUpdateBot, useUploadFile, useCreateFolder, useDeleteFile, useRenameFile,
   getGetBotQueryKey, getListFilesQueryKey, getGetBotLogsQueryKey, getListEnvVarsQueryKey
 } from "@workspace/api-client-react";
@@ -151,6 +151,9 @@ export default function BotDetailPage() {
   const [settingsDesc, setSettingsDesc] = useState("");
   const [settingsAvatar, setSettingsAvatar] = useState("");
   const [settingsStatus, setSettingsStatus] = useState("online");
+  const [settingsActivityType, setSettingsActivityType] = useState("none");
+  const [settingsActivityText, setSettingsActivityText] = useState("");
+  const [rebuildLoading, setRebuildLoading] = useState(false);
   const [fetchingAvatar, setFetchingAvatar] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [shareDiscordId, setShareDiscordId] = useState("");
@@ -174,7 +177,6 @@ export default function BotDetailPage() {
   const startBot = useStartBot();
   const stopBot = useStopBot();
   const restartBot = useRestartBot();
-  const deployBot = useDeployBot();
   const updateBot = useUpdateBot();
   const setEnvVar = useSetEnvVar();
   const deleteEnvVar = useDeleteEnvVar();
@@ -199,13 +201,14 @@ export default function BotDetailPage() {
     }
   }, [bot]);
 
-  // Load BOT_STATUS and BOT_AVATAR_URL from env vars
+  // Load presence env vars
   useEffect(() => {
     if (envVars && Array.isArray(envVars)) {
-      const statusVar = (envVars as any[]).find((v: any) => v.key === "BOT_STATUS");
-      const avatarVar = (envVars as any[]).find((v: any) => v.key === "BOT_AVATAR_URL");
-      if (statusVar?.value) setSettingsStatus(statusVar.value);
-      if (avatarVar?.value) setSettingsAvatar(avatarVar.value);
+      const find = (k: string) => (envVars as any[]).find((v: any) => v.key === k)?.value;
+      const st = find("BOT_STATUS"); if (st) setSettingsStatus(st);
+      const av = find("BOT_AVATAR_URL"); if (av) setSettingsAvatar(av);
+      const at = find("BOT_ACTIVITY_TYPE"); if (at) setSettingsActivityType(at);
+      const atx = find("BOT_ACTIVITY_TEXT"); if (atx !== undefined) setSettingsActivityText(atx || "");
     }
   }, [envVars]);
 
@@ -273,13 +276,6 @@ export default function BotDetailPage() {
     (fns[action] as any).mutate({ botId }, {
       onSuccess: () => { refresh(); toast({ title: `Bot ${action === "start" ? "iniciado" : action === "stop" ? "detenido" : "reiniciado"}` }); },
       onError: () => toast({ title: `Error al ${action}`, variant: "destructive" }),
-    });
-  };
-
-  const handleDeploy = () => {
-    deployBot.mutate({ botId }, {
-      onSuccess: () => { refresh(); toast({ title: "Despliegue iniciado" }); },
-      onError: () => toast({ title: "Error al desplegar", variant: "destructive" }),
     });
   };
 
@@ -447,6 +443,8 @@ export default function BotDetailPage() {
       onSuccess: async () => {
         const envUpdates = [
           { key: "BOT_STATUS", value: settingsStatus },
+          { key: "BOT_ACTIVITY_TYPE", value: settingsActivityType },
+          { key: "BOT_ACTIVITY_TEXT", value: settingsActivityText.trim() },
           ...(settingsAvatar.trim() ? [{ key: "BOT_AVATAR_URL", value: settingsAvatar.trim() }] : []),
         ];
         await Promise.all(
@@ -502,7 +500,17 @@ export default function BotDetailPage() {
           {(bot as any).status !== "running" && <Button size="sm" onClick={() => handleAction("start")}><Play className="w-3 h-3 mr-1" />Start</Button>}
           {(bot as any).status === "running" && <Button size="sm" variant="outline" onClick={() => handleAction("stop")}><Square className="w-3 h-3 mr-1" />Stop</Button>}
           <Button size="sm" variant="outline" onClick={() => handleAction("restart")}><RotateCcw className="w-3 h-3 mr-1" />Restart</Button>
-          <Link href="/deployments"><button className="inline-flex items-center justify-center gap-1 rounded-md border border-input bg-background text-sm font-medium px-3 h-8 hover:bg-accent hover:text-accent-foreground transition-colors"><Rocket className="w-3 h-3" />Historial</button></Link>
+          <Button size="sm" variant="outline" disabled={rebuildLoading} onClick={async () => {
+            setRebuildLoading(true);
+            try {
+              const res = await fetch(`/api/bots/${botId}/rebuild`, { method: "POST", credentials: "include" });
+              if (res.ok) { refresh(); toast({ title: "🔨 Rebuild iniciado", description: "Reinstalando dependencias desde cero..." }); }
+              else { const d = await res.json(); toast({ title: "Error al rebuild", description: d.error, variant: "destructive" }); }
+            } catch { toast({ title: "Error de red", variant: "destructive" }); }
+            finally { setRebuildLoading(false); }
+          }}>
+            {rebuildLoading ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />Rebuilding...</> : <><Rocket className="w-3 h-3 mr-1" />Rebuild</>}
+          </Button>
           {isOwner && (canShare ? (
             <Button size="sm" variant="outline" onClick={() => setShowShareDialog(v => !v)}>
               <Share2 className="w-3 h-3 mr-1" />Share
@@ -1042,37 +1050,82 @@ export default function BotDetailPage() {
 
             <Card className="bg-card/60 border-border/40">
               <CardHeader><CardTitle className="text-sm">Presencia y Estado</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-5">
                 <p className="text-xs text-muted-foreground">
-                  Elige el estado que quieres que muestre tu bot en Discord. Al guardar, el bot se reinicia automáticamente para aplicar el cambio.
+                  Configura el estado y la actividad que verán los usuarios en Discord. Los cambios se aplican al reiniciar el bot.
                 </p>
+
+                {/* Status selector */}
                 <div className="space-y-2">
-                  {BOT_STATUSES.map(s => (
-                    <button key={s.value} onClick={() => setSettingsStatus(s.value)}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md border text-sm font-medium transition-colors ${
-                        settingsStatus === s.value
-                          ? "border-primary/50 bg-primary/10 text-foreground"
-                          : "border-border/40 text-muted-foreground hover:bg-accent/30"
-                      }`}>
-                      {s.label}
-                    </button>
-                  ))}
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Estado</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {BOT_STATUSES.map(s => (
+                      <button key={s.value} onClick={() => setSettingsStatus(s.value)}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-md border text-sm font-medium transition-colors ${
+                          settingsStatus === s.value
+                            ? "border-primary/50 bg-primary/10 text-foreground"
+                            : "border-border/40 text-muted-foreground hover:bg-accent/30"
+                        }`}>
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="p-3 bg-muted/30 rounded-md border border-border/30 text-xs text-muted-foreground font-mono">
-                  <p className="font-semibold text-foreground/60 mb-1"># Ejemplo en tu bot:</p>
-                  {lang === "python" ? (
-                    <>
-                      <p>import os, discord</p>
-                      <p>status = os.getenv("BOT_STATUS", "online")</p>
-                      <p>activity = discord.Activity(type=discord.ActivityType.playing, name="Blocker X")</p>
-                    </>
-                  ) : (
-                    <>
-                      <p>const status = process.env.BOT_STATUS || 'online'</p>
-                      <p>{"client.user.setPresence({ status });"}</p>
-                    </>
-                  )}
+
+                {/* Activity type */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tipo de Actividad</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { value: "none", label: "Ninguna" },
+                      { value: "playing", label: "🎮 Jugando" },
+                      { value: "watching", label: "📺 Viendo" },
+                      { value: "listening", label: "🎵 Escuchando" },
+                      { value: "streaming", label: "🔴 Streaming" },
+                      { value: "competing", label: "🏆 Compitiendo" },
+                    ].map(a => (
+                      <button key={a.value} onClick={() => setSettingsActivityType(a.value)}
+                        className={`flex items-center justify-center gap-1 px-2 py-2 rounded-md border text-xs font-medium transition-colors ${
+                          settingsActivityType === a.value
+                            ? "border-primary/50 bg-primary/10 text-foreground"
+                            : "border-border/40 text-muted-foreground hover:bg-accent/30"
+                        }`}>
+                        {a.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+
+                {/* Activity text */}
+                {settingsActivityType !== "none" && (
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Texto de actividad
+                    </Label>
+                    <Input
+                      value={settingsActivityText}
+                      onChange={e => setSettingsActivityText(e.target.value)}
+                      placeholder={
+                        settingsActivityType === "playing" ? "ej. Minecraft" :
+                        settingsActivityType === "watching" ? "ej. usuarios globales" :
+                        settingsActivityType === "listening" ? "ej. lo-fi beats" :
+                        settingsActivityType === "streaming" ? "ej. Blocker X" :
+                        "ej. torneos"
+                      }
+                      className="text-sm"
+                      maxLength={128}
+                    />
+                    <p className="text-xs text-muted-foreground/60">
+                      Vista previa: <span className="text-foreground/70 font-medium">
+                        {settingsActivityType === "playing" ? "Jugando a" :
+                         settingsActivityType === "watching" ? "Viendo" :
+                         settingsActivityType === "listening" ? "Escuchando" :
+                         settingsActivityType === "streaming" ? "En streaming" :
+                         "Compitiendo en"} {settingsActivityText || "..."}
+                      </span>
+                    </p>
+                  </div>
+                )}
 
                 <Button onClick={handleSaveSettings} disabled={updateBot.isPending} className="w-full">
                   <Save className="w-4 h-4 mr-2" />

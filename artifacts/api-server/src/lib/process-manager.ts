@@ -501,20 +501,22 @@ async function spawnBotProcess(
 
     await db.update(botsTable).set({ status: "running" }).where(eq(botsTable.id, botId));
 
-    // DM user only when bot is truly online
+    // Notify user when bot comes online — throttled to avoid spam on scheduled restarts
     try {
       const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
       if (freshUser?.discordId) {
         const [freshBot] = await db.select().from(botsTable).where(eq(botsTable.id, botId));
+        const botName = freshBot?.name || "Tu bot";
         await sendDiscordDm(freshUser.discordId, {
-          title: "✅ Bot Online",
-          message: `**${freshBot?.name || "Your bot"}** is now running and connected to Discord.`,
+          title: "Bot en línea",
+          message: `**${botName}** está conectado y funcionando.`,
           type: "success",
+          throttleKey: `${botId}:online`,
         });
         await createNotification({
           userId,
-          title: "Bot Online",
-          message: `"${freshBot?.name || "Your bot"}" is online.`,
+          title: `${botName} en línea`,
+          message: `Tu bot está activo y conectado a Discord.`,
           type: "success",
         });
       }
@@ -551,9 +553,17 @@ async function spawnBotProcess(
           const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
           const [freshBot] = await db.select().from(botsTable).where(eq(botsTable.id, botId));
           if (freshUser?.discordId) {
+            const botName = freshBot?.name || "Tu bot";
             await sendDiscordDm(freshUser.discordId, {
-              title: "❌ Bot Error",
-              message: `**${freshBot?.name || "Your bot"}** crashed with exit code **${code}**.\nCheck the logs and fix the error, then restart manually.`,
+              title: "Bot detenido por error",
+              message: `**${botName}** se cerró inesperadamente (código ${code}).\nRevisa los logs y reinicia manualmente.`,
+              type: "error",
+              throttleKey: `${botId}:crash`,
+            });
+            await createNotification({
+              userId,
+              title: `Error en ${botName}`,
+              message: `El bot se cerró con código ${code}. Revisa los logs.`,
               type: "error",
             });
           }
@@ -627,6 +637,44 @@ export async function stopBot(botId: string): Promise<void> {
       bp.child.kill("SIGKILL");
     }
   }, 5000);
+}
+
+/**
+ * Rebuild: stop (with wait), wipe local workdir to force fresh dep install, then start.
+ * Exported so the bots route can call it directly without duplicating lifecycle logic.
+ */
+export async function rebuildBot(
+  bot: { id: string; language: string; mainFile: string | null; r2Prefix: string; userId: string },
+  userId: string
+): Promise<void> {
+  const botId = bot.id;
+
+  // Wait for existing process to fully exit (same pattern as restartBot)
+  const bp = processes.get(botId);
+  if (bp) {
+    bp.isStopping = true;
+    clearBotTimers(botId);
+    bp.child.kill("SIGTERM");
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(() => { bp.child.kill("SIGKILL"); resolve(); }, 5000);
+      bp.child.once("exit", () => { clearTimeout(timeout); resolve(); });
+    });
+    processes.delete(botId);
+  }
+
+  // Wipe local workdir — forces fresh pip/npm install on next start
+  const workDir = path.join(BOT_WORK_DIR, botId);
+  rmSync(workDir, { recursive: true, force: true });
+
+  await db.update(botsTable).set({ status: "starting" }).where(eq(botsTable.id, botId));
+  await addLog(botId, "info", "[System] Rebuild: workdir cleared, reinstalando dependencias...");
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  const plan = user?.plan || "free";
+
+  spawnBotProcess(bot as any, userId, plan, 0).catch((err) => {
+    logger.error({ err, botId }, "spawnBotProcess error on rebuild");
+  });
 }
 
 export async function restartBot(

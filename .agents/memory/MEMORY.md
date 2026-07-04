@@ -9,3 +9,6 @@
 - [Bot config persistence](bot-config-persistence.md) — bot local JSON wiped on restart; fix: bx_config.py helper + /api/bot-internal/config routes + BX_INTERNAL_TOKEN HMAC auth
 - [R2 source of truth — no local→R2 sync on restart](r2-source-of-truth.md) — never call syncWorkdirToR2 inside downloadBotFiles; stale local files overwrite user's R2 edits
 - [bx_data persistent KV store](bx-data-pattern.md) — bx_data.py uses /api/bot-internal/data/:scope/:entityId (R2-backed), in-memory cache; avoids per-ID JSON file sprawl
+- [Bot presence system](bot-presence.md) — BOT_STATUS + BOT_ACTIVITY_TYPE + BOT_ACTIVITY_TEXT env vars; _bx_inject.py patches Client.dispatch to call change_presence on ready
+- [Rebuild vs restart pattern](rebuild-pattern.md) — rebuildBot() in process-manager.ts: wait for exit (like restartBot), wipe workdir, then spawnBotProcess; never call stopBot+startBot without waiting
+- [DM throttle pattern](dm-throttle.md) — sendDiscordDm accepts throttleKey; _dmCooldowns Map enforces 5-min cooldown per botId:eventKey; manual stop → in-app only, no DM
