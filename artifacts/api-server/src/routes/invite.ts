@@ -16,30 +16,45 @@ router.post("/invite/redeem", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  if (user.hasInvite) {
-    res.json({ message: "Already have access" });
-    return;
-  }
-
-  const [invite] = await db.select().from(inviteCodesTable).where(eq(inviteCodesTable.code, code.trim()));
+  const normalizedCode = code.trim().toUpperCase();
+  const [invite] = await db.select().from(inviteCodesTable).where(eq(inviteCodesTable.code, normalizedCode));
 
   if (!invite) {
-    res.status(400).json({ error: "Invalid invitation code" });
+    res.status(400).json({ error: "Código inválido. Verifica que esté escrito correctamente." });
     return;
   }
 
   if (!invite.isActive) {
-    res.status(400).json({ error: "This invitation code is disabled" });
+    res.status(400).json({ error: "Este código ha sido desactivado." });
     return;
   }
 
   if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) {
-    res.status(400).json({ error: "This invitation code has expired" });
+    res.status(400).json({ error: "Este código ha expirado." });
     return;
   }
 
   if (invite.maxUses !== null && invite.usesCount >= invite.maxUses) {
-    res.status(400).json({ error: "This invitation code has reached its usage limit" });
+    res.status(400).json({ error: "Este código ya alcanzó su límite de usos." });
+    return;
+  }
+
+  const isPremium = !!(invite as any).grantsPremium;
+
+  // If user already has access AND the key doesn't grant premium OR they already have premium — skip
+  if (user.hasInvite && (!isPremium || (user as any).plan === "premium")) {
+    res.json({ message: "Ya tienes acceso completo.", grantsPremium: false });
+    return;
+  }
+
+  // Check if already redeemed this specific code
+  const [alreadyRedeemed] = await db
+    .select()
+    .from(redeemedCodesTable)
+    .where(and(eq(redeemedCodesTable.codeId, invite.id), eq(redeemedCodesTable.userId, user.id)));
+
+  if (alreadyRedeemed) {
+    res.status(400).json({ error: "Ya canjeaste este código anteriormente." });
     return;
   }
 
@@ -47,26 +62,23 @@ router.post("/invite/redeem", requireAuth, async (req, res): Promise<void> => {
   await db.insert(redeemedCodesTable).values({ id: randomUUID(), codeId: invite.id, userId: user.id });
 
   const updates: Record<string, any> = { hasInvite: true };
-  if ((invite as any).grantsPremium) {
-    updates.plan = "premium";
-  }
+  if (isPremium) updates.plan = "premium";
   await db.update(usersTable).set(updates).where(eq(usersTable.id, user.id));
 
-  const isPremium = !!(invite as any).grantsPremium;
   await createNotification({
     userId: user.id,
-    title: isPremium ? "Premium Activated!" : "Access Granted",
+    title: isPremium ? "¡Premium activado! 🎉" : "Acceso concedido",
     message: isPremium
-      ? "Your premium key was accepted. Enjoy unlimited bots, AI, and more!"
-      : "Your invitation code was accepted. Welcome to Blocker X!",
+      ? "Tu clave premium fue aceptada. Disfruta bots ilimitados, IA sin límites y más."
+      : "Tu código de invitación fue aceptado. ¡Bienvenido a Blocker X!",
     type: "success",
   });
 
-  req.log.info({ userId: user.id, code, isPremium }, "Invite code redeemed");
+  req.log.info({ userId: user.id, code: normalizedCode, isPremium }, "Invite code redeemed");
   res.json({
     message: isPremium
-      ? "Premium key accepted! Your account has been upgraded."
-      : "Invitation code accepted. Welcome to Blocker X!",
+      ? "¡Clave premium aceptada! Tu cuenta fue actualizada."
+      : "Código aceptado. ¡Bienvenido a Blocker X!",
     grantsPremium: isPremium,
   });
 });

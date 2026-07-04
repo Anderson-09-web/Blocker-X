@@ -640,6 +640,46 @@ export async function stopBot(botId: string): Promise<void> {
 }
 
 /**
+ * Reinstall: stop (with wait), wipe ONLY venv/node_modules (not user files), then start.
+ * User's bot code and configs survive untouched.
+ */
+export async function reinstallBot(
+  bot: { id: string; language: string; mainFile: string | null; r2Prefix: string; userId: string },
+  userId: string
+): Promise<void> {
+  const botId = bot.id;
+
+  const bp = processes.get(botId);
+  if (bp) {
+    bp.isStopping = true;
+    clearBotTimers(botId);
+    bp.child.kill("SIGTERM");
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(() => { bp.child.kill("SIGKILL"); resolve(); }, 5000);
+      bp.child.once("exit", () => { clearTimeout(timeout); resolve(); });
+    });
+    processes.delete(botId);
+  }
+
+  // Only wipe dependency dirs — user's code and config are safe
+  const workDir = path.join(BOT_WORK_DIR, botId);
+  const depDirs = ["venv", "node_modules", ".venv", "__pycache__"];
+  for (const dir of depDirs) {
+    rmSync(path.join(workDir, dir), { recursive: true, force: true });
+  }
+
+  await db.update(botsTable).set({ status: "starting" }).where(eq(botsTable.id, botId));
+  await addLog(botId, "info", "[System] Reinstalando paquetes (tus archivos no fueron modificados)...");
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  const plan = user?.plan || "free";
+
+  spawnBotProcess(bot as any, userId, plan, 0).catch((err) => {
+    logger.error({ err, botId }, "spawnBotProcess error on reinstall");
+  });
+}
+
+/**
  * Rebuild: stop (with wait), wipe local workdir to force fresh dep install, then start.
  * Exported so the bots route can call it directly without duplicating lifecycle logic.
  */

@@ -153,6 +153,7 @@ export default function BotDetailPage() {
   const [settingsStatus, setSettingsStatus] = useState("online");
   const [settingsActivityType, setSettingsActivityType] = useState("none");
   const [settingsActivityText, setSettingsActivityText] = useState("");
+  const [settingsSaved, setSettingsSaved] = useState(false);
   const [rebuildLoading, setRebuildLoading] = useState(false);
   const [fetchingAvatar, setFetchingAvatar] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
@@ -456,15 +457,17 @@ export default function BotDetailPage() {
         );
         qc.invalidateQueries({ queryKey: getListEnvVarsQueryKey(botId) });
 
+        setSettingsSaved(true);
+        setTimeout(() => setSettingsSaved(false), 3000);
         if (isRunning) {
-          toast({ title: "Configuración guardada · Aplicando cambios...", description: "El bot se reinicia automáticamente." });
+          toast({ title: "Guardado · Reiniciando bot...", description: "La presencia se aplicará en unos segundos." });
           restartBot.mutate({ botId }, {
-            onSuccess: () => { refresh(); toast({ title: "✅ Estado aplicado", description: `El bot ahora está como ${BOT_STATUSES.find(s => s.value === settingsStatus)?.label || settingsStatus}` }); },
-            onError: () => { refresh(); toast({ title: "Guardado. Reinicia el bot manualmente si no cambia.", variant: "destructive" }); },
+            onSuccess: () => { refresh(); toast({ title: "✅ Presencia aplicada", description: `El bot ahora muestra: ${BOT_STATUSES.find(s => s.value === settingsStatus)?.label || settingsStatus}` }); },
+            onError: () => { refresh(); toast({ title: "Guardado. Reinicia el bot manualmente para aplicar.", variant: "destructive" }); },
           });
         } else {
           refresh();
-          toast({ title: "✅ Configuración guardada" });
+          toast({ title: "✅ Configuración guardada", description: "Inicia el bot para que los cambios surtan efecto." });
         }
       },
       onError: () => toast({ title: "Error al guardar configuración", variant: "destructive" }),
@@ -500,16 +503,16 @@ export default function BotDetailPage() {
           {(bot as any).status !== "running" && <Button size="sm" onClick={() => handleAction("start")}><Play className="w-3 h-3 mr-1" />Start</Button>}
           {(bot as any).status === "running" && <Button size="sm" variant="outline" onClick={() => handleAction("stop")}><Square className="w-3 h-3 mr-1" />Stop</Button>}
           <Button size="sm" variant="outline" onClick={() => handleAction("restart")}><RotateCcw className="w-3 h-3 mr-1" />Restart</Button>
-          <Button size="sm" variant="outline" disabled={rebuildLoading} onClick={async () => {
+          <Button size="sm" variant="outline" disabled={rebuildLoading} title="Reinstala los paquetes (pip/npm) sin tocar tus archivos" onClick={async () => {
             setRebuildLoading(true);
             try {
-              const res = await fetch(`/api/bots/${botId}/rebuild`, { method: "POST", credentials: "include" });
-              if (res.ok) { refresh(); toast({ title: "🔨 Rebuild iniciado", description: "Reinstalando dependencias desde cero..." }); }
-              else { const d = await res.json(); toast({ title: "Error al rebuild", description: d.error, variant: "destructive" }); }
+              const res = await fetch(`/api/bots/${botId}/reinstall`, { method: "POST", credentials: "include" });
+              if (res.ok) { refresh(); toast({ title: "📦 Reinstalando paquetes", description: "Tus archivos no fueron modificados." }); }
+              else { const d = await res.json(); toast({ title: "Error al reinstalar", description: d.error, variant: "destructive" }); }
             } catch { toast({ title: "Error de red", variant: "destructive" }); }
             finally { setRebuildLoading(false); }
           }}>
-            {rebuildLoading ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />Rebuilding...</> : <><Rocket className="w-3 h-3 mr-1" />Rebuild</>}
+            {rebuildLoading ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" />Reinstalando...</> : <><Rocket className="w-3 h-3 mr-1" />Reinstalar</>}
           </Button>
           {isOwner && (canShare ? (
             <Button size="sm" variant="outline" onClick={() => setShowShareDialog(v => !v)}>
@@ -1127,9 +1130,54 @@ export default function BotDetailPage() {
                   </div>
                 )}
 
-                <Button onClick={handleSaveSettings} disabled={updateBot.isPending} className="w-full">
-                  <Save className="w-4 h-4 mr-2" />
-                  {updateBot.isPending ? "Guardando..." : "Guardar Configuración"}
+                {/* Code snippet — how to use presence vars in their bot */}
+                <div className="rounded-lg border border-border/30 bg-muted/20 overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-muted/40 border-b border-border/30">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {lang === "python" ? "Python — leer actividad en tu bot" : "JavaScript — leer actividad en tu bot"}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/50 font-mono">env vars</span>
+                  </div>
+                  <pre className="text-xs font-mono text-green-300/80 px-4 py-3 overflow-x-auto leading-5">
+                    {lang === "python" ? (
+`import os
+
+# Leído automáticamente por Blocker X — solo úsalo si quieres
+# personalizar la actividad desde tu propio código
+status = os.getenv("BOT_STATUS", "online")
+activity_type = os.getenv("BOT_ACTIVITY_TYPE", "none")
+activity_text = os.getenv("BOT_ACTIVITY_TEXT", "")
+
+# Ejemplo: "Viendo 1000 usuarios globales"
+# → Tipo: watching  Texto: 1000 usuarios globales` ) : (
+`const status = process.env.BOT_STATUS ?? 'online';
+const activityType = process.env.BOT_ACTIVITY_TYPE ?? 'none';
+const activityText = process.env.BOT_ACTIVITY_TEXT ?? '';
+
+// Ejemplo: "Escuchando lo-fi beats"
+// → Tipo: listening  Texto: lo-fi beats`)}
+                  </pre>
+                </div>
+
+                <div className="text-xs text-muted-foreground/60 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary/50 inline-block" />
+                  {(bot as any)?.status === "running"
+                    ? "Al guardar, el bot se reinicia automáticamente y aplica la presencia."
+                    : "Inicia el bot para que la presencia se aplique en Discord."}
+                </div>
+
+                <Button
+                  onClick={handleSaveSettings}
+                  disabled={updateBot.isPending}
+                  className={`w-full transition-all ${settingsSaved ? "bg-green-600 hover:bg-green-600 text-white" : ""}`}
+                >
+                  {updateBot.isPending ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Guardando...</>
+                  ) : settingsSaved ? (
+                    <><Save className="w-4 h-4 mr-2" />¡Guardado!</>
+                  ) : (
+                    <><Save className="w-4 h-4 mr-2" />Guardar Configuración</>
+                  )}
                 </Button>
               </CardContent>
             </Card>

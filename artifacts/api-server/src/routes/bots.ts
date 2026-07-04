@@ -4,7 +4,7 @@ import { eq, and, desc, or } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, requireInvite } from "../lib/auth-middleware";
 import { createNotification, notifyUser } from "../lib/notifications";
-import { startBot, stopBot, restartBot, rebuildBot, getProcessStatus } from "../lib/process-manager";
+import { startBot, stopBot, restartBot, reinstallBot, getProcessStatus } from "../lib/process-manager";
 import { r2WriteFile, r2DeletePrefix } from "../lib/r2";
 import { PYTHON_MAIN, PYTHON_REQUIREMENTS, JS_MAIN, JS_PACKAGE_JSON } from "../lib/templates";
 
@@ -283,25 +283,25 @@ router.post("/bots/:botId/restart", requireAuth, requireInvite, async (req, res)
   res.json({ message: "Bot restarting" });
 });
 
-router.post("/bots/:botId/rebuild", requireAuth, requireInvite, async (req, res): Promise<void> => {
+router.post("/bots/:botId/reinstall", requireAuth, requireInvite, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const botId = getBotId(req);
   const bot = await requireBotAccess(req, res, botId);
   if (!bot) return;
 
-  // rebuildBot: waits for clean exit, wipes workdir, then starts fresh — no race conditions
-  rebuildBot({ ...bot, userId: bot.userId } as any, bot.userId).catch((err: any) => {
-    req.log.error({ err, botId }, "Rebuild failed");
+  // Reinstall: stop, wipe only venv/node_modules (not user files), then restart
+  await reinstallBot({ ...bot, userId: bot.userId } as any, bot.userId).catch((err: any) => {
+    req.log.error({ err, botId }, "Reinstall failed");
   });
 
   await createNotification({
     userId: user.id,
-    title: `${bot.name} — rebuild iniciado`,
-    message: `Reinstalando dependencias desde cero. El bot estará en línea en unos momentos.`,
+    title: `${bot.name} — reinstalando paquetes`,
+    message: `Los paquetes se están reinstalando. Tus archivos no fueron modificados.`,
     type: "info",
   });
 
-  res.json({ message: "Rebuild started" });
+  res.json({ message: "Reinstall started" });
 });
 
 // Share routes
