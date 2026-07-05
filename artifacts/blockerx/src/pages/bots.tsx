@@ -306,7 +306,7 @@ function CreateBotWizard({ onClose, onCreated }: { onClose: () => void; onCreate
 }
 
 export default function BotsPage() {
-  const { data: bots, isLoading } = useListBots();
+  const { data: bots, isLoading } = useListBots({ query: { queryKey: getListBotsQueryKey(), refetchInterval: 5000 } });
   const startBot = useStartBot();
   const stopBot = useStopBot();
   const restartBot = useRestartBot();

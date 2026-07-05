@@ -80,11 +80,13 @@ try:
             except Exception:
                 text = text.replace("{channels}", "?")
 
-        # {latency} — guard against inf/nan before heartbeat
+        # {latency} — guard against inf/nan/absurd values before heartbeat is stable
         if "{latency}" in text:
             try:
                 lat = client.latency
-                if lat is None or _math_mod.isinf(lat) or _math_mod.isnan(lat):
+                # discord.py reports heartbeat latency in seconds; anything above 5s
+                # means the value isn't a real network ping yet (startup / event loop stall)
+                if lat is None or _math_mod.isinf(lat) or _math_mod.isnan(lat) or lat > 5:
                     text = text.replace("{latency}", "...")
                 else:
                     text = text.replace("{latency}", str(round(lat * 1000)))
@@ -147,8 +149,36 @@ try:
     _bx_poll_task = None          # guard: only one polling task per client
     _bx_startup_time = None  # module-level alias used by _bx_resolve_vars
 
+    # Anti-duplicate guard: Discord can occasionally re-deliver "message" and
+    # "interaction" events to the client after a gateway RESUME (brief reconnect),
+    # which makes bots answer the same command/interaction twice. We remember the
+    # ids we already dispatched for a short window and drop exact repeats.
+    _bx_seen_events = {}
+    _BX_DEDUPE_EVENTS = {"message", "interaction"}
+    _BX_DEDUPE_TTL = 10.0
+
+    def _bx_is_duplicate_event(event, args):
+        if event not in _BX_DEDUPE_EVENTS or not args:
+            return False
+        obj_id = getattr(args[0], "id", None)
+        if obj_id is None:
+            return False
+        now = _time_mod.monotonic()
+        key = (event, obj_id)
+        last = _bx_seen_events.get(key)
+        if last is not None and (now - last) < _BX_DEDUPE_TTL:
+            return True
+        _bx_seen_events[key] = now
+        if len(_bx_seen_events) > 1000:
+            cutoff = now - _BX_DEDUPE_TTL
+            for k in [k for k, t in _bx_seen_events.items() if t < cutoff]:
+                _bx_seen_events.pop(k, None)
+        return False
+
     def _bx_patched_dispatch(self, event, *args, **kwargs):
         global _bx_applied_update_at, _bx_poll_task, _bx_startup_time
+        if _bx_is_duplicate_event(event, args):
+            return  # swallow duplicate re-dispatch, avoids answering twice
         _bx_orig_dispatch(self, event, *args, **kwargs)
         if event == "ready":
             async def _on_ready_presence():
@@ -237,6 +267,47 @@ import _bx_inject  # noqa: F401  — debe importarse antes que discord
 import runpy as _runpy
 
 _runpy.run_path(${quotedMain}, run_name="__main__")
+`;
+}
+
+/**
+ * _bx_preload.js — inyectado con `node -r ./_bx_preload.js index.js` para bots de JS.
+ * Equivalente al guard anti-duplicados de _bx_inject.py: Discord puede reenviar
+ * "messageCreate"/"interactionCreate" tras un RESUME del gateway (reconexion breve),
+ * lo que hace que el bot responda dos veces al mismo mensaje o interaccion.
+ * No modifica el codigo del usuario, solo envuelve la emision de eventos.
+ */
+export function getBxPreloadJs(): string {
+  return `\
+// _bx_preload.js — generado por BlockerX, no editar
+try {
+  const { Client } = require("discord.js");
+  const _bxSeen = new Map(); // "event:id" -> timestamp
+  const _BX_DEDUPE_EVENTS = new Set(["messageCreate", "interactionCreate"]);
+  const _BX_DEDUPE_TTL_MS = 10000;
+
+  const _bxOrigEmit = Client.prototype.emit;
+  Client.prototype.emit = function (event, ...args) {
+    if (_BX_DEDUPE_EVENTS.has(event) && args[0] && args[0].id) {
+      const key = event + ":" + args[0].id;
+      const now = Date.now();
+      const last = _bxSeen.get(key);
+      if (last !== undefined && now - last < _BX_DEDUPE_TTL_MS) {
+        return false; // duplicate re-dispatch — swallow it, avoids answering twice
+      }
+      _bxSeen.set(key, now);
+      if (_bxSeen.size > 1000) {
+        for (const [k, t] of _bxSeen) {
+          if (now - t > _BX_DEDUPE_TTL_MS) _bxSeen.delete(k);
+        }
+      }
+    }
+    return _bxOrigEmit.call(this, event, ...args);
+  };
+  console.error("[BlockerX] Proteccion anti-duplicados cargada.");
+} catch (e) {
+  console.error("[BlockerX] No se pudo cargar proteccion anti-duplicados:", e && e.message);
+}
 `;
 }
 

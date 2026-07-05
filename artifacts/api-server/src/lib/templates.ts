@@ -1,6 +1,7 @@
 export const PYTHON_MAIN = `import discord
 from discord.ext import commands
 import os
+import time
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -15,7 +16,13 @@ async def on_ready():
 
 @bot.command()
 async def ping(ctx):
-    await ctx.send(f"Pong! ({round(bot.latency * 1000)}ms)")
+    # Medimos el round-trip real de la llamada a la API de Discord en vez de
+    # depender solo de bot.latency (latencia del heartbeat), que puede reportar
+    # valores absurdos si el heartbeat se retrasa o el bot acaba de conectar.
+    start = time.perf_counter()
+    msg = await ctx.send("Pong...")
+    rtt_ms = round((time.perf_counter() - start) * 1000)
+    await msg.edit(content=f"Pong! {rtt_ms}ms")
 
 bot.run(os.getenv("DISCORD_TOKEN"))
 `;
@@ -43,7 +50,13 @@ client.once("ready", (c) => {
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
   if (message.content === "!ping") {
-    await message.reply(\`Pong! \${Math.round(client.ws.ping)}ms\`);
+    // Medimos el round-trip real de la llamada a la API de Discord en vez de
+    // depender solo de client.ws.ping (latencia del heartbeat), que puede
+    // reportar valores absurdos si el heartbeat se retrasa o el bot acaba de conectar.
+    const start = Date.now();
+    const sent = await message.reply("Pong...");
+    const rttMs = Date.now() - start;
+    await sent.edit(\`Pong! \${rttMs}ms\`);
   }
 });
 

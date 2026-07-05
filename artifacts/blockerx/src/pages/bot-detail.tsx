@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams } from "wouter";
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -131,6 +131,8 @@ export default function BotDetailPage() {
   const { toast } = useToast();
 
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const editorGutterRef = useRef<HTMLDivElement>(null);
+  const editorTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [fileContent, setFileContent] = useState("");
   const [newEnvKey, setNewEnvKey] = useState("");
   const [newEnvVal, setNewEnvVal] = useState("");
@@ -173,7 +175,7 @@ export default function BotDetailPage() {
 
   const { user: currentUser } = useAuth();
 
-  const { data: bot, isLoading } = useGetBot(botId, { query: { queryKey: getGetBotQueryKey(botId) } });
+  const { data: bot, isLoading } = useGetBot(botId, { query: { queryKey: getGetBotQueryKey(botId), refetchInterval: 4000 } });
   const { data: files, refetch: refetchFiles } = useListFiles(
     botId,
     currentFolder ? { dirPath: currentFolder } : {},
@@ -1000,15 +1002,19 @@ export default function BotDetailPage() {
               <CardContent className="p-0">
                 {selectedFile ? (
                   <div className="flex rounded-b-lg overflow-hidden border border-border/40 font-mono text-sm" style={{ height: "22rem" }}>
-                    <div className="select-none bg-black/20 text-muted-foreground/50 text-right px-2 py-3 overflow-hidden border-r border-border/30 min-w-[3rem]"
+                    <div ref={editorGutterRef} className="select-none bg-black/20 text-muted-foreground/50 text-right px-2 py-3 overflow-hidden border-r border-border/30 min-w-[3rem]"
                       style={{ lineHeight: "1.5rem", fontSize: "0.75rem" }}>
                       {fileContent.split("\n").map((_, i) => (
                         <div key={i} style={{ height: "1.5rem" }}>{i + 1}</div>
                       ))}
                     </div>
                     <textarea
+                      ref={editorTextareaRef}
                       value={fileContent}
                       onChange={e => setFileContent(e.target.value)}
+                      onScroll={e => {
+                        if (editorGutterRef.current) editorGutterRef.current.scrollTop = e.currentTarget.scrollTop;
+                      }}
                       className="flex-1 bg-background/50 p-3 resize-none focus:outline-none focus:ring-1 focus:ring-primary/40 text-sm font-mono"
                       style={{ lineHeight: "1.5rem", tabSize: 4 }}
                       spellCheck={false}

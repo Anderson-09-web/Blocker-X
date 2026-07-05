@@ -2,7 +2,7 @@ import { spawn, ChildProcess, execSync } from "child_process";
 import { rmSync, mkdirSync, existsSync } from "fs";
 import { writeFile, mkdir, readFile, readdir, lstat, realpath } from "fs/promises";
 import path from "path";
-import { getBxInjectPy, getBxRunPy, getBxConfigPy, getBxDataPy } from "./bx-scripts";
+import { getBxInjectPy, getBxRunPy, getBxConfigPy, getBxDataPy, getBxPreloadJs } from "./bx-scripts";
 import { db, botsTable, botLogsTable, envVarsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -52,6 +52,7 @@ const BX_PLATFORM_FILES = new Set([
   "bx_config.py",
   "bx_data.py",
   "bx_data.db",
+  "_bx_preload.js",
 ]);
 
 /**
@@ -460,8 +461,11 @@ async function spawnBotProcess(
       } else {
         await addLog(botId, "info", "[System] Node.js dependencies installed.");
       }
+      // Inject anti-duplicate guard for JS bots via `-r` preload — see bx-scripts.ts.
+      // Does not touch the user's own files, only wraps discord.js event emission.
+      await writeFile(path.join(workDir, "_bx_preload.js"), getBxPreloadJs());
       cmd = "node";
-      args = [mainFile];
+      args = ["-r", "./_bx_preload.js", mainFile];
     }
 
     await addLog(botId, "info", `[System] Spawning: ${cmd} ${args.join(" ")}`);
