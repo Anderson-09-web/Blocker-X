@@ -346,18 +346,19 @@ router.post("/bots/:botId/presence", requireAuth, requireInvite, async (req, res
   const presenceData = { status, activityType, activityText, updatedAt: Date.now() };
   presenceStore.set(botId, presenceData);
 
-  // Persist to R2 so the bot can still pick it up after an API server restart
-  try {
-    const r2Prefix = bot.r2Prefix as string | undefined;
-    if (r2Prefix) {
-      const { r2WriteFile } = await import("../lib/r2");
-      await r2WriteFile(`${r2Prefix}/_bx_presence.json`, JSON.stringify(presenceData));
-    }
-  } catch {
-    // Non-fatal — in-memory store is still set
-  }
-
+  // Respond immediately — the bot picks this up from the in-memory store on its
+  // next poll (~3s), so the request shouldn't wait on R2. R2 persistence below is
+  // best-effort backup only (used if the API server restarts before the bot re-polls).
   res.json({ ok: true });
+
+  const r2Prefix = bot.r2Prefix as string | undefined;
+  if (r2Prefix) {
+    import("../lib/r2")
+      .then(({ r2WriteFile }) => r2WriteFile(`${r2Prefix}/_bx_presence.json`, JSON.stringify(presenceData)))
+      .catch(() => {
+        // Non-fatal — in-memory store is still set, bot already has the update
+      });
+  }
 });
 
 router.post("/bots/:botId/reinstall", requireAuth, requireInvite, async (req, res): Promise<void> => {

@@ -533,34 +533,34 @@ export default function BotDetailPage() {
       );
       qc.invalidateQueries({ queryKey: getListEnvVarsQueryKey(botId) });
 
-      // 3. If bot is running, push presence update — no restart needed (~10s to apply)
-      if (isRunning) {
-        const presRes = await fetch(`/api/bots/${botId}/presence`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ status: settingsStatus, activityType: settingsActivityType, activityText: settingsActivityText.trim() }),
-        });
-        if (!presRes.ok) throw new Error("No se pudo enviar la presencia al bot");
-      }
+      // 3. Push the live presence update regardless of the cached "running" status —
+      // it's a no-op if the bot is stopped, and avoids missing the push when the
+      // cached bot status is briefly stale. The bot itself applies it on its next poll (~3s).
+      const presRes = await fetch(`/api/bots/${botId}/presence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status: settingsStatus, activityType: settingsActivityType, activityText: settingsActivityText.trim() }),
+      });
+      if (!presRes.ok) throw new Error("No se pudo enviar la presencia al bot");
 
       setSettingsSaved(true);
       refresh();
       toast({
         title: "✅ Guardado",
         description: isRunning
-          ? "La presencia se aplicará en Discord en ~10 segundos."
-          : "Inicia el bot para que los cambios surtan efecto.",
+          ? "La presencia se aplicará en Discord en unos segundos."
+          : "Se guardó y se aplicará en cuanto inicies el bot.",
       });
 
       if (isRunning) {
-        // The bot process applies presence on its own ~10s poll cycle, so reflect
+        // The bot process polls for presence changes every ~3s, so reflect
         // that visually instead of looking stuck/bugged right after saving.
         setApplyingPresence(true);
         setTimeout(() => {
           setApplyingPresence(false);
           refresh();
-        }, 10000);
+        }, 4000);
       }
       setTimeout(() => setSettingsSaved(false), 3000);
     } catch {
@@ -1332,7 +1332,7 @@ export default function BotDetailPage() {
                     />
                     {/* Dynamic variable chips */}
                     <div className="flex flex-wrap gap-1.5">
-                      <p className="text-xs text-muted-foreground/60 w-full">Variables dinámicas (se actualizan cada 10s):</p>
+                      <p className="text-xs text-muted-foreground/60 w-full">Variables dinámicas (se actualizan cada 15s):</p>
                       {["{users}", "{guilds}", "{channels}", "{commands}", "{latency}", "{uptime}"].map(v => (
                         <button key={v} type="button"
                           onClick={() => setSettingsActivityText(t => t + v)}
@@ -1391,7 +1391,7 @@ export default function BotDetailPage() {
                     {applyingPresence
                       ? "Aplicando cambios en Discord..."
                       : (bot as any)?.status === "running"
-                      ? "Cambios aplicados en Discord en ~10 segundos · sin reiniciar"
+                      ? "Cambios aplicados en Discord en unos segundos · sin reiniciar"
                       : "Inicia el bot para que la presencia aparezca en Discord"}
                   </p>
                 </div>
