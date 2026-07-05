@@ -13,7 +13,7 @@ export function createSessionMiddleware() {
       tableName: "pg_sessions",
       createTableIfMissing: true,
     }),
-    secret: process.env.SESSION_SECRET || "blockerx-secret-key-change-in-prod",
+    secret: process.env.SESSION_SECRET ?? (() => { throw new Error("SESSION_SECRET environment variable is required"); })(),
     resave: false,
     saveUninitialized: false,
     cookie: {

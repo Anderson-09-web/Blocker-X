@@ -5,12 +5,26 @@ A professional Discord bot hosting platform where developers upload, edit, deplo
 ## Run & Operate
 
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080, proxied at /api)
-- `pnpm --filter @workspace/blockerx run dev` — run the frontend (port 25673, proxied at /)
+- `BASE_PATH=/ PORT=5000 pnpm --filter @workspace/blockerx run dev` — run the frontend (port 5000, proxied at /)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only, uses NEON_DATABASE_URL)
-- Required env: `NEON_DATABASE_URL` — Neon PostgreSQL connection string
+
+## Required secrets (set in Replit Secrets)
+
+| Secret | Required | Purpose |
+|---|---|---|
+| `NEON_DATABASE_URL` | ✅ Always | PostgreSQL connection string (Neon) |
+| `SESSION_SECRET` | ✅ Always | Express session signing key |
+| `DISCORD_CLIENT_ID` | ✅ Login | Discord OAuth2 app ID |
+| `DISCORD_CLIENT_SECRET` | ✅ Login | Discord OAuth2 app secret |
+| `CF_R2_ACCOUNT_ID` | ✅ File storage | Cloudflare R2 account ID |
+| `CF_R2_ACCESS_KEY_ID` | ✅ File storage | R2 access key |
+| `CF_R2_SECRET_ACCESS_KEY` | ✅ File storage | R2 secret key |
+| `CF_R2_BUCKET_NAME` | ✅ File storage | R2 bucket name |
+| `CF_R2_ENDPOINT` | ✅ File storage | R2 S3-compatible endpoint URL |
+| `GROQ_API_KEY` | Optional | AI assistant (llama3-70b); feature disabled without it |
 
 ## Stack
 
