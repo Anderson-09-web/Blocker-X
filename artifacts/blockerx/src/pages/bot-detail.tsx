@@ -154,6 +154,7 @@ export default function BotDetailPage() {
   const [settingsActivityType, setSettingsActivityType] = useState("none");
   const [settingsActivityText, setSettingsActivityText] = useState("");
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [applyingPresence, setApplyingPresence] = useState(false);
   const [rebuildLoading, setRebuildLoading] = useState(false);
   const [fetchingAvatar, setFetchingAvatar] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
@@ -542,7 +543,6 @@ export default function BotDetailPage() {
       }
 
       setSettingsSaved(true);
-      setTimeout(() => setSettingsSaved(false), 3000);
       refresh();
       toast({
         title: "✅ Guardado",
@@ -550,6 +550,17 @@ export default function BotDetailPage() {
           ? "La presencia se aplicará en Discord en ~10 segundos."
           : "Inicia el bot para que los cambios surtan efecto.",
       });
+
+      if (isRunning) {
+        // The bot process applies presence on its own ~10s poll cycle, so reflect
+        // that visually instead of looking stuck/bugged right after saving.
+        setApplyingPresence(true);
+        setTimeout(() => {
+          setApplyingPresence(false);
+          refresh();
+        }, 10000);
+      }
+      setTimeout(() => setSettingsSaved(false), 3000);
     } catch {
       toast({ title: "Error al guardar la configuración", variant: "destructive" });
     } finally {
@@ -1237,7 +1248,14 @@ export default function BotDetailPage() {
             </Card>
 
             <Card className="bg-card/60 border-border/40">
-              <CardHeader><CardTitle className="text-sm">Presencia y Estado</CardTitle></CardHeader>
+              <CardHeader className="flex-row items-center justify-between">
+                <CardTitle className="text-sm">Presencia y Estado</CardTitle>
+                <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs gap-1 text-muted-foreground hover:bg-accent/30" title="Exportar proyecto como .zip"
+                  onClick={handleExportProject} disabled={exportingZip}>
+                  {exportingZip ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                  <span className="hidden sm:inline">Exportar</span>
+                </Button>
+              </CardHeader>
               <CardContent className="space-y-5">
                 <p className="text-xs text-muted-foreground">
                   Configura el estado y la actividad que verán los usuarios en Discord. Los cambios se aplican inmediatamente sin reiniciar el bot.
@@ -1360,8 +1378,10 @@ export default function BotDetailPage() {
                     </div>
                   </div>
                   <p className="text-[11px] text-muted-foreground/40 flex items-center gap-1.5">
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${(bot as any)?.status === "running" ? "bg-green-500" : "bg-muted-foreground/30"}`} />
-                    {(bot as any)?.status === "running"
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${applyingPresence ? "bg-yellow-400 animate-pulse" : (bot as any)?.status === "running" ? "bg-green-500" : "bg-muted-foreground/30"}`} />
+                    {applyingPresence
+                      ? "Aplicando cambios en Discord..."
+                      : (bot as any)?.status === "running"
                       ? "Cambios aplicados en Discord en ~10 segundos · sin reiniciar"
                       : "Inicia el bot para que la presencia aparezca en Discord"}
                   </p>
@@ -1374,6 +1394,8 @@ export default function BotDetailPage() {
                 >
                   {isSavingSettings ? (
                     <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Guardando...</>
+                  ) : applyingPresence ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Aplicando en Discord...</>
                   ) : settingsSaved ? (
                     <><Save className="w-4 h-4 mr-2" />¡Guardado!</>
                   ) : (
