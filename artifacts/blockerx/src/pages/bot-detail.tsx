@@ -900,42 +900,52 @@ export default function BotDetailPage() {
                       </button>
                       <div className="flex items-center gap-0 pr-1 shrink-0">
                         {f.type !== "directory" && f.name.toLowerCase().endsWith(".zip") ? (
-                          /* ZIP files — botón ··· con menú contextual */
-                          <div className="relative">
-                            <button
-                              title="Opciones"
-                              onClick={(e) => { e.stopPropagation(); setOpenFileMenu(openFileMenu === f.path ? null : f.path); }}
+                          /* ZIP files — botón de exportar visible + menú ··· para el resto de opciones */
+                          <>
+                            <a
+                              title="Exportar .zip"
+                              href={`/api/files/${botId}/download?path=${encodeURIComponent(f.path)}`}
+                              download={f.name}
+                              onClick={(e) => e.stopPropagation()}
                               className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-accent text-muted-foreground hover:text-foreground transition-opacity">
-                              <MoreHorizontal className="w-3.5 h-3.5" />
-                            </button>
-                            {openFileMenu === f.path && (
-                              <>
-                                <div className="fixed inset-0 z-10" onClick={() => setOpenFileMenu(null)} />
-                                <div className="absolute right-0 top-7 z-20 w-36 bg-card border border-border rounded-lg shadow-xl overflow-hidden">
-                                  <a
-                                    href={`/api/files/${botId}/download?path=${encodeURIComponent(f.path)}`}
-                                    download={f.name}
-                                    onClick={() => setOpenFileMenu(null)}
-                                    className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-accent transition-colors text-foreground/80 cursor-pointer">
-                                    <Download className="w-3.5 h-3.5" />
-                                    Exportar
-                                  </a>
-                                  <button
-                                    onClick={() => { setMovingFile({ path: f.path, name: f.name }); setMoveTargetFolder(currentFolder || ""); setShowMoveModal(true); setOpenFileMenu(null); }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-accent transition-colors text-foreground/80">
-                                    <FolderInput className="w-3.5 h-3.5" />
-                                    Mover
-                                  </button>
-                                  <button
-                                    onClick={() => { setConfirmDeleteFile(f.path); setOpenFileMenu(null); }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-destructive/20 hover:text-destructive transition-colors text-muted-foreground">
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                    Eliminar
-                                  </button>
-                                </div>
-                              </>
-                            )}
-                          </div>
+                              <Download className="w-3.5 h-3.5" />
+                            </a>
+                            <div className="relative">
+                              <button
+                                title="Opciones"
+                                onClick={(e) => { e.stopPropagation(); setOpenFileMenu(openFileMenu === f.path ? null : f.path); }}
+                                className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-accent text-muted-foreground hover:text-foreground transition-opacity">
+                                <MoreHorizontal className="w-3.5 h-3.5" />
+                              </button>
+                              {openFileMenu === f.path && (
+                                <>
+                                  <div className="fixed inset-0 z-10" onClick={() => setOpenFileMenu(null)} />
+                                  <div className="absolute right-0 top-7 z-20 w-36 bg-card border border-border rounded-lg shadow-xl overflow-hidden">
+                                    <a
+                                      href={`/api/files/${botId}/download?path=${encodeURIComponent(f.path)}`}
+                                      download={f.name}
+                                      onClick={() => setOpenFileMenu(null)}
+                                      className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-accent transition-colors text-foreground/80 cursor-pointer">
+                                      <Download className="w-3.5 h-3.5" />
+                                      Exportar
+                                    </a>
+                                    <button
+                                      onClick={() => { setMovingFile({ path: f.path, name: f.name }); setMoveTargetFolder(currentFolder || ""); setShowMoveModal(true); setOpenFileMenu(null); }}
+                                      className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-accent transition-colors text-foreground/80">
+                                      <FolderInput className="w-3.5 h-3.5" />
+                                      Mover
+                                    </button>
+                                    <button
+                                      onClick={() => { setConfirmDeleteFile(f.path); setOpenFileMenu(null); }}
+                                      className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-destructive/20 hover:text-destructive transition-colors text-muted-foreground">
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                      Eliminar
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </>
                         ) : f.type !== "directory" ? (
                           /* Otros archivos — botones inline al hover */
                           <>
