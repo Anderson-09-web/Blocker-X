@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Square, RotateCcw, Rocket, Plus, Trash2, Save, Folder, FileText, ChevronLeft, Settings, BookOpen, FilePlus, FolderPlus, X, Loader2, RefreshCw, ChevronRight, FolderInput, AlertTriangle, Share2, Users, Crown, Bot, Download, Edit2, Eye, EyeOff, ShieldCheck, ShieldAlert, ExternalLink, Upload } from "lucide-react";
+import { Play, Square, RotateCcw, Rocket, Plus, Trash2, Save, Folder, FileText, ChevronLeft, Settings, BookOpen, FilePlus, FolderPlus, X, Loader2, RefreshCw, ChevronRight, FolderInput, AlertTriangle, Share2, Users, Crown, Bot, Download, Edit2, Eye, EyeOff, ShieldCheck, ShieldAlert, ExternalLink, Upload, MoreHorizontal } from "lucide-react";
 import { Link } from "wouter";
 
 function StatusBadge({ status }: { status: string }) {
@@ -166,6 +166,7 @@ export default function BotDetailPage() {
   const [editingEnvVar, setEditingEnvVar] = useState<{ id: string; key: string } | null>(null);
   const [editingEnvVal, setEditingEnvVal] = useState("");
   const [visibleEnvIds, setVisibleEnvIds] = useState<Set<string>>(new Set());
+  const [openFileMenu, setOpenFileMenu] = useState<string | null>(null);
   const [checkingIntents, setCheckingIntents] = useState(false);
   const [intentsResult, setIntentsResult] = useState<{ valid: boolean; botName?: string; error?: string; intents?: { presence: boolean; serverMembers: boolean; messageContent: boolean } } | null>(null);
 
@@ -887,7 +888,45 @@ export default function BotDetailPage() {
                         {f.type === "directory" && <ChevronRight className="w-3 h-3 shrink-0 opacity-40 ml-auto" />}
                       </button>
                       <div className="flex items-center gap-0 pr-1 shrink-0">
-                        {f.type !== "directory" && (
+                        {f.type !== "directory" && f.name.toLowerCase().endsWith(".zip") ? (
+                          /* ZIP files — botón ··· con menú contextual */
+                          <div className="relative">
+                            <button
+                              title="Opciones"
+                              onClick={(e) => { e.stopPropagation(); setOpenFileMenu(openFileMenu === f.path ? null : f.path); }}
+                              className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-accent text-muted-foreground hover:text-foreground transition-opacity">
+                              <MoreHorizontal className="w-3.5 h-3.5" />
+                            </button>
+                            {openFileMenu === f.path && (
+                              <>
+                                <div className="fixed inset-0 z-10" onClick={() => setOpenFileMenu(null)} />
+                                <div className="absolute right-0 top-7 z-20 w-36 bg-card border border-border rounded-lg shadow-xl overflow-hidden">
+                                  <a
+                                    href={`/api/files/${botId}/download?path=${encodeURIComponent(f.path)}`}
+                                    download={f.name}
+                                    onClick={() => setOpenFileMenu(null)}
+                                    className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-accent transition-colors text-foreground/80 cursor-pointer">
+                                    <Download className="w-3.5 h-3.5" />
+                                    Exportar
+                                  </a>
+                                  <button
+                                    onClick={() => { setMovingFile({ path: f.path, name: f.name }); setMoveTargetFolder(currentFolder || ""); setShowMoveModal(true); setOpenFileMenu(null); }}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-accent transition-colors text-foreground/80">
+                                    <FolderInput className="w-3.5 h-3.5" />
+                                    Mover
+                                  </button>
+                                  <button
+                                    onClick={() => { setConfirmDeleteFile(f.path); setOpenFileMenu(null); }}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-destructive/20 hover:text-destructive transition-colors text-muted-foreground">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    Eliminar
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        ) : f.type !== "directory" ? (
+                          /* Otros archivos — botones inline al hover */
                           <>
                             <a
                               title="Descargar archivo"
@@ -902,21 +941,22 @@ export default function BotDetailPage() {
                               className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-accent text-muted-foreground hover:text-foreground transition-opacity">
                               <FolderInput className="w-3.5 h-3.5" />
                             </button>
+                            <button
+                              title="Eliminar archivo"
+                              onClick={() => setConfirmDeleteFile(f.path)}
+                              className="p-1 rounded hover:bg-destructive/20 hover:text-destructive transition-colors text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </>
+                        ) : (
+                          /* Carpetas — solo eliminar */
+                          <button
+                            title="Eliminar carpeta"
+                            onClick={() => setConfirmDeleteFolder({ path: f.path, name: f.name })}
+                            className="p-1 rounded hover:bg-destructive/20 hover:text-destructive transition-colors text-muted-foreground/60 opacity-100">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         )}
-                        <button
-                          title={f.type === "directory" ? "Eliminar carpeta" : "Eliminar archivo"}
-                          onClick={() => f.type === "directory"
-                            ? setConfirmDeleteFolder({ path: f.path, name: f.name })
-                            : setConfirmDeleteFile(f.path)
-                          }
-                          className={`p-1 rounded hover:bg-destructive/20 hover:text-destructive transition-colors ${
-                            f.type === "directory"
-                              ? "text-muted-foreground/60 opacity-100"
-                              : "text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-                          }`}>
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
                       </div>
                     </div>
                   ))}

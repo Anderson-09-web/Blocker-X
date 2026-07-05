@@ -343,7 +343,19 @@ router.post("/bots/:botId/presence", requireAuth, requireInvite, async (req, res
   if (!bot) return;
 
   const { status = "online", activityType = "none", activityText = "" } = req.body;
-  presenceStore.set(botId, { status, activityType, activityText, updatedAt: Date.now() });
+  const presenceData = { status, activityType, activityText, updatedAt: Date.now() };
+  presenceStore.set(botId, presenceData);
+
+  // Persist to R2 so the bot can still pick it up after an API server restart
+  try {
+    const r2Prefix = bot.r2Prefix as string | undefined;
+    if (r2Prefix) {
+      const { r2WriteFile } = await import("../lib/r2");
+      await r2WriteFile(`${r2Prefix}/_bx_presence.json`, JSON.stringify(presenceData));
+    }
+  } catch {
+    // Non-fatal — in-memory store is still set
+  }
 
   res.json({ ok: true });
 });

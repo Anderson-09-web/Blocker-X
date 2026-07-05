@@ -171,11 +171,14 @@ try:
                     _bx_poll_task.cancel()
 
                 async def _bx_poll_presence(client):
-                    """Poll panel every 10s and apply presence changes without restart.
-                    If activity text contains dynamic vars ({users}, {guilds} etc.), re-applies every cycle."""
+                    """Poll panel every 3s for config freshness.
+                    - New panel saves (updatedAt changed) apply immediately.
+                    - Dynamic vars ({users} etc.) re-resolve at most every 15s to avoid Discord rate limits."""
                     global _bx_applied_update_at
+                    _bx_last_var_push = 0.0  # monotonic time of last dynamic-var presence push
+                    _VAR_COOLDOWN = 15.0     # seconds between dynamic-var presence updates
                     while True:
-                        await _asyncio.sleep(10)
+                        await _asyncio.sleep(3)
                         try:
                             loop = _asyncio.get_event_loop()
                             presence = await loop.run_in_executor(None, _bx_fetch_presence)
@@ -184,19 +187,25 @@ try:
                             updated_at = presence.get("updatedAt")
                             raw_text = presence.get("activityText", "")
                             has_vars = "{" in raw_text
-                            # Re-apply every poll if vars present (keeps stats fresh), else only on change
-                            if updated_at == _bx_applied_update_at and not has_vars:
+                            now = _time_mod.monotonic()
+                            is_new_save = updated_at != _bx_applied_update_at
+                            var_cooldown_ok = (now - _bx_last_var_push) >= _VAR_COOLDOWN
+
+                            # Apply immediately on new save; re-apply vars only when cooldown allows
+                            if not is_new_save and not (has_vars and var_cooldown_ok):
                                 continue
+
                             resolved_text = _bx_resolve_vars(client, raw_text)
                             st, act = _bx_build_presence(
                                 presence.get("status", "online"),
                                 presence.get("activityType", "none"),
                                 resolved_text,
                             )
-                            # Only mark as applied AFTER change_presence succeeds.
-                            # If it throws, we retry next cycle instead of skipping forever.
+                            # Only mark as applied AFTER change_presence succeeds so failures retry.
                             await client.change_presence(status=st, activity=act)
                             _bx_applied_update_at = updated_at
+                            if has_vars:
+                                _bx_last_var_push = now
                         except _asyncio.CancelledError:
                             raise  # Let cancellation propagate
                         except Exception:

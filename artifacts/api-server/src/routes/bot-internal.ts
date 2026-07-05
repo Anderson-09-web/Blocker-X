@@ -162,10 +162,26 @@ export interface BotPresence {
 }
 export const presenceStore = new Map<string, BotPresence>();
 
+const PRESENCE_KEY = "_bx_presence.json";
+
 // GET /api/bot-internal/presence
-// Polled by the running bot every 10s to pick up panel changes without restart.
-router.get("/bot-internal/presence", requireBotAuth, (req: any, res: any): void => {
-  const presence = presenceStore.get(req.bot.id) ?? null;
+// Polled by the running bot every 3s to pick up panel changes without restart.
+router.get("/bot-internal/presence", requireBotAuth, async (req: any, res: any): Promise<void> => {
+  let presence = presenceStore.get(req.bot.id) ?? null;
+
+  // If not in memory (e.g. after API server restart), read from R2 as fallback
+  if (!presence && req.bot.r2Prefix) {
+    try {
+      const raw = await r2ReadFile(`${req.bot.r2Prefix}/${PRESENCE_KEY}`);
+      if (raw) {
+        presence = JSON.parse(raw) as BotPresence;
+        presenceStore.set(req.bot.id, presence); // warm up in-memory cache
+      }
+    } catch {
+      // File not found or parse error — ignore
+    }
+  }
+
   res.json({ ok: true, presence });
 });
 
