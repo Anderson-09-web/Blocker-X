@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Square, RotateCcw, Rocket, Plus, Trash2, Save, Folder, FileText, ChevronLeft, Settings, BookOpen, FilePlus, FolderPlus, X, Loader2, RefreshCw, ChevronRight, FolderInput, AlertTriangle, Share2, Users, Crown, Bot, Download, Edit2, Eye, EyeOff, ShieldCheck, ShieldAlert, ExternalLink, Upload, MoreHorizontal } from "lucide-react";
+import { Play, Square, RotateCcw, Rocket, Plus, Trash2, Save, Folder, FileText, ChevronLeft, Settings, BookOpen, FilePlus, FolderPlus, X, Loader2, RefreshCw, ChevronRight, FolderInput, AlertTriangle, Share2, Users, Crown, Bot, Download, Edit2, Eye, EyeOff, ShieldCheck, ShieldAlert, ExternalLink, Upload, MoreHorizontal, Zap } from "lucide-react";
 import { Link } from "wouter";
 
 function StatusBadge({ status }: { status: string }) {
@@ -157,6 +157,7 @@ export default function BotDetailPage() {
   const [settingsActivityText, setSettingsActivityText] = useState("");
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [applyingPresence, setApplyingPresence] = useState(false);
+  const [applyingNow, setApplyingNow] = useState(false);
   const [rebuildLoading, setRebuildLoading] = useState(false);
   const [fetchingAvatar, setFetchingAvatar] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
@@ -567,6 +568,36 @@ export default function BotDetailPage() {
       toast({ title: "Error al guardar la configuración", variant: "destructive" });
     } finally {
       setIsSavingSettings(false);
+    }
+  };
+
+  const handleApplyNow = async () => {
+    if (applyingNow || (bot as any)?.status !== "running") return;
+    setApplyingNow(true);
+    // Hard cap so the button visually resolves even if the network call stalls —
+    // it never looks permanently stuck loading.
+    const safetyTimeout = setTimeout(() => setApplyingNow(false), 6000);
+    try {
+      const res = await fetch(`/api/bots/${botId}/presence/apply-now`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        toast({
+          title: "No se pudo aplicar ahora",
+          description: data?.message || "El bot no respondió a tiempo, intenta de nuevo.",
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "✅ Aplicado", description: "La presencia se actualizó en Discord." });
+      }
+    } catch {
+      toast({ title: "No se pudo aplicar ahora", description: "Revisa tu conexión e intenta de nuevo.", variant: "destructive" });
+    } finally {
+      clearTimeout(safetyTimeout);
+      setApplyingNow(false);
+      refresh();
     }
   };
 
@@ -1386,9 +1417,11 @@ export default function BotDetailPage() {
                       )}
                     </div>
                   </div>
-                  <p className="text-[11px] text-muted-foreground/40 flex items-center gap-1.5">
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${applyingPresence ? "bg-yellow-400 animate-pulse" : (bot as any)?.status === "running" ? "bg-green-500" : "bg-muted-foreground/30"}`} />
-                    {applyingPresence
+                  <p className="text-[11px] text-muted-foreground/40 flex items-center gap-1.5" role="status" aria-live="polite">
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${(applyingPresence || applyingNow) ? "bg-yellow-400 animate-pulse" : (bot as any)?.status === "running" ? "bg-green-500" : "bg-muted-foreground/30"}`} />
+                    {applyingNow
+                      ? "Aplicando ahora en Discord..."
+                      : applyingPresence
                       ? "Aplicando cambios en Discord..."
                       : (bot as any)?.status === "running"
                       ? "Cambios aplicados en Discord en unos segundos · sin reiniciar"
@@ -1396,21 +1429,47 @@ export default function BotDetailPage() {
                   </p>
                 </div>
 
-                <Button
-                  onClick={handleSaveSettings}
-                  disabled={isSavingSettings}
-                  className={`w-full transition-colors ${settingsSaved ? "bg-green-600 hover:bg-green-600 text-white" : ""}`}
-                >
-                  {isSavingSettings ? (
-                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Guardando...</>
-                  ) : applyingPresence ? (
-                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Aplicando en Discord...</>
-                  ) : settingsSaved ? (
-                    <><Save className="w-4 h-4 mr-2" />¡Guardado!</>
-                  ) : (
-                    <><Save className="w-4 h-4 mr-2" />Guardar Configuración</>
-                  )}
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button
+                    onClick={handleSaveSettings}
+                    disabled={isSavingSettings}
+                    aria-busy={isSavingSettings}
+                    className={`flex-1 transition-colors ${settingsSaved ? "bg-green-600 hover:bg-green-600 text-white" : ""}`}
+                  >
+                    {isSavingSettings ? (
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />Guardando...</>
+                    ) : applyingPresence ? (
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />Aplicando en Discord...</>
+                    ) : settingsSaved ? (
+                      <><Save className="w-4 h-4 mr-2" aria-hidden="true" />¡Guardado!</>
+                    ) : (
+                      <><Save className="w-4 h-4 mr-2" aria-hidden="true" />Guardar Configuración</>
+                    )}
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleApplyNow}
+                    disabled={applyingNow || (bot as any)?.status !== "running"}
+                    aria-busy={applyingNow}
+                    aria-label={
+                      (bot as any)?.status !== "running"
+                        ? "Aplicar ahora — inicia el bot primero"
+                        : applyingNow
+                        ? "Aplicando presencia ahora, espera un momento"
+                        : "Aplicar los cambios de presencia ahora mismo, sin esperar el ciclo automático"
+                    }
+                    title={(bot as any)?.status !== "running" ? "Inicia el bot para poder aplicar ahora" : "Fuerza la actualización inmediata en Discord"}
+                    className="flex-1 sm:flex-none sm:min-w-[160px] gap-2"
+                  >
+                    {applyingNow ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />Aplicando...</>
+                    ) : (
+                      <><Zap className="w-4 h-4" aria-hidden="true" />Aplicar ahora</>
+                    )}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </div>

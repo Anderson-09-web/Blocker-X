@@ -34,6 +34,22 @@ export function getRunningBotIds(): string[] {
   );
 }
 
+/**
+ * Force a running bot to immediately re-check its presence config instead of
+ * waiting for its own ~3s poll cycle. Used by the "Aplicar ahora" button.
+ * Returns false if the bot isn't currently running.
+ */
+export function forcePresenceCheck(botId: string): boolean {
+  const bp = processes.get(botId);
+  if (!bp || bp.child.exitCode !== null || bp.child.killed) return false;
+  try {
+    bp.child.kill("SIGUSR2");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function addLog(botId: string, level: string, message: string): Promise<void> {
   try {
     await db.insert(botLogsTable).values({ id: randomUUID(), botId, level, message });

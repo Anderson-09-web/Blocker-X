@@ -4,7 +4,7 @@ import { eq, and, desc, or } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, requireInvite } from "../lib/auth-middleware";
 import { createNotification, notifyUser } from "../lib/notifications";
-import { startBot, stopBot, restartBot, reinstallBot, getProcessStatus } from "../lib/process-manager";
+import { startBot, stopBot, restartBot, reinstallBot, getProcessStatus, forcePresenceCheck } from "../lib/process-manager";
 import { presenceStore } from "./bot-internal";
 import { r2WriteFile, r2DeletePrefix } from "../lib/r2";
 import { PYTHON_MAIN, PYTHON_REQUIREMENTS, JS_MAIN, JS_PACKAGE_JSON } from "../lib/templates";
@@ -359,6 +359,22 @@ router.post("/bots/:botId/presence", requireAuth, requireInvite, async (req, res
         // Non-fatal — in-memory store is still set, bot already has the update
       });
   }
+});
+
+// POST /bots/:botId/presence/apply-now — force the bot to re-check presence immediately
+// instead of waiting for its own ~3s poll cycle. Bounded response so the UI never hangs.
+router.post("/bots/:botId/presence/apply-now", requireAuth, requireInvite, async (req, res): Promise<void> => {
+  const botId = getBotId(req);
+  const bot = await requireBotAccess(req, res, botId);
+  if (!bot) return;
+
+  if (getProcessStatus(botId) !== "running") {
+    res.status(409).json({ ok: false, message: "El bot no está en línea." });
+    return;
+  }
+
+  const sent = forcePresenceCheck(botId);
+  res.json({ ok: sent });
 });
 
 router.post("/bots/:botId/reinstall", requireAuth, requireInvite, async (req, res): Promise<void> => {

@@ -20,6 +20,7 @@ import json as _json
 import urllib.request as _ureq
 import time as _time_mod
 import math as _math_mod
+import signal as _signal_mod
 
 _BX_API_URL = _os.getenv("BX_API_URL", "http://127.0.0.1:3001")
 _BX_BOT_ID  = _os.getenv("BX_BOT_ID", "")
@@ -175,14 +176,54 @@ try:
                 _bx_seen_events.pop(k, None)
         return False
 
+    _bx_last_var_push = 0.0   # monotonic time of last dynamic-var presence push
+    _BX_VAR_COOLDOWN = 15.0   # seconds between dynamic-var presence updates
+    _bx_signal_registered = False
+
+    async def _bx_check_and_apply_presence(client, force=False):
+        """Fetch presence from the panel and apply it if it's new (or unconditionally
+        when force=True, used by the "Aplicar ahora" button so it's guaranteed visible)."""
+        global _bx_applied_update_at, _bx_last_var_push
+        try:
+            loop = _asyncio.get_event_loop()
+            presence = await loop.run_in_executor(None, _bx_fetch_presence)
+            if presence is None:
+                return False
+            updated_at = presence.get("updatedAt")
+            raw_text = presence.get("activityText", "")
+            has_vars = "{" in raw_text
+            now = _time_mod.monotonic()
+            is_new_save = updated_at != _bx_applied_update_at
+            var_cooldown_ok = (now - _bx_last_var_push) >= _BX_VAR_COOLDOWN
+
+            if not force and not is_new_save and not (has_vars and var_cooldown_ok):
+                return False
+
+            resolved_text = _bx_resolve_vars(client, raw_text)
+            st, act = _bx_build_presence(
+                presence.get("status", "online"),
+                presence.get("activityType", "none"),
+                resolved_text,
+            )
+            # Only mark as applied AFTER change_presence succeeds so failures retry.
+            await client.change_presence(status=st, activity=act)
+            _bx_applied_update_at = updated_at
+            if has_vars or force:
+                _bx_last_var_push = now
+            return True
+        except _asyncio.CancelledError:
+            raise  # Let cancellation propagate
+        except Exception:
+            return False  # Never crash the bot on a poll error
+
     def _bx_patched_dispatch(self, event, *args, **kwargs):
-        global _bx_applied_update_at, _bx_poll_task, _bx_startup_time
+        global _bx_applied_update_at, _bx_poll_task, _bx_startup_time, _bx_signal_registered
         if _bx_is_duplicate_event(event, args):
             return  # swallow duplicate re-dispatch, avoids answering twice
         _bx_orig_dispatch(self, event, *args, **kwargs)
         if event == "ready":
             async def _on_ready_presence():
-                global _bx_applied_update_at, _bx_poll_task, _bx_startup_time
+                global _bx_applied_update_at, _bx_poll_task, _bx_startup_time, _bx_signal_registered
                 await _asyncio.sleep(1)
                 _bx_startup_time = _time_mod.monotonic()
                 # Apply env-var presence on startup (resolve dynamic variables)
@@ -204,44 +245,25 @@ try:
                     """Poll panel every 3s for config freshness.
                     - New panel saves (updatedAt changed) apply immediately.
                     - Dynamic vars ({users} etc.) re-resolve at most every 15s to avoid Discord rate limits."""
-                    global _bx_applied_update_at
-                    _bx_last_var_push = 0.0  # monotonic time of last dynamic-var presence push
-                    _VAR_COOLDOWN = 15.0     # seconds between dynamic-var presence updates
                     while True:
                         await _asyncio.sleep(3)
-                        try:
-                            loop = _asyncio.get_event_loop()
-                            presence = await loop.run_in_executor(None, _bx_fetch_presence)
-                            if presence is None:
-                                continue
-                            updated_at = presence.get("updatedAt")
-                            raw_text = presence.get("activityText", "")
-                            has_vars = "{" in raw_text
-                            now = _time_mod.monotonic()
-                            is_new_save = updated_at != _bx_applied_update_at
-                            var_cooldown_ok = (now - _bx_last_var_push) >= _VAR_COOLDOWN
-
-                            # Apply immediately on new save; re-apply vars only when cooldown allows
-                            if not is_new_save and not (has_vars and var_cooldown_ok):
-                                continue
-
-                            resolved_text = _bx_resolve_vars(client, raw_text)
-                            st, act = _bx_build_presence(
-                                presence.get("status", "online"),
-                                presence.get("activityType", "none"),
-                                resolved_text,
-                            )
-                            # Only mark as applied AFTER change_presence succeeds so failures retry.
-                            await client.change_presence(status=st, activity=act)
-                            _bx_applied_update_at = updated_at
-                            if has_vars:
-                                _bx_last_var_push = now
-                        except _asyncio.CancelledError:
-                            raise  # Let cancellation propagate
-                        except Exception:
-                            pass  # Never crash the bot on a poll error
+                        await _bx_check_and_apply_presence(client, force=False)
 
                 _bx_poll_task = _asyncio.get_event_loop().create_task(_bx_poll_presence(self))
+
+                # Register a signal handler once so the panel's "Aplicar ahora" button can
+                # force an immediate re-check without waiting for the next poll tick.
+                if not _bx_signal_registered:
+                    try:
+                        loop = _asyncio.get_event_loop()
+                        client_ref = self
+                        loop.add_signal_handler(
+                            _signal_mod.SIGUSR2,
+                            lambda: loop.create_task(_bx_check_and_apply_presence(client_ref, force=True)),
+                        )
+                        _bx_signal_registered = True
+                    except Exception:
+                        pass  # Signal handlers unsupported on this platform (e.g. Windows) — poll still works
 
             try:
                 loop = _asyncio.get_event_loop()
@@ -281,7 +303,7 @@ export function getBxPreloadJs(): string {
   return `\
 // _bx_preload.js — generado por BlockerX, no editar
 try {
-  const { Client } = require("discord.js");
+  const { Client, ActivityType } = require("discord.js");
   const _bxSeen = new Map(); // "event:id" -> timestamp
   const _BX_DEDUPE_EVENTS = new Set(["messageCreate", "interactionCreate"]);
   const _BX_DEDUPE_TTL_MS = 10000;
@@ -302,11 +324,161 @@ try {
         }
       }
     }
+    if (event === "ready" && !_bxClient) {
+      _bxClient = this;
+      _bxStartPresence(this);
+    }
     return _bxOrigEmit.call(this, event, ...args);
   };
-  console.error("[BlockerX] Proteccion anti-duplicados cargada.");
+
+  // --- Presencia en tiempo real (equivalente a _bx_inject.py para bots de Python) ---
+  const _BX_API_URL = process.env.BX_API_URL || "http://127.0.0.1:3001";
+  const _BX_BOT_ID  = process.env.BX_BOT_ID || "";
+  const _BX_TOKEN   = process.env.BX_INTERNAL_TOKEN || "";
+  const _BX_ACTIVITY_MAP = {
+    playing: ActivityType.Playing,
+    watching: ActivityType.Watching,
+    listening: ActivityType.Listening,
+    streaming: ActivityType.Streaming,
+    competing: ActivityType.Competing,
+  };
+
+  let _bxClient = null;
+  let _bxStartupTime = null;
+  let _bxAppliedUpdateAt = null;
+  let _bxLastVarPush = 0;
+  const _BX_VAR_COOLDOWN_MS = 15000;
+
+  function _bxResolveVars(client, text) {
+    if (!text || text.indexOf("{") === -1) return text;
+    try {
+      if (text.includes("{guilds}")) text = text.replaceAll("{guilds}", String(client.guilds.cache.size));
+    } catch (e) { text = text.replaceAll("{guilds}", "?"); }
+    try {
+      if (text.includes("{users}")) {
+        const total = client.guilds.cache.reduce((sum, g) => sum + (g.memberCount || 0), 0);
+        text = text.replaceAll("{users}", String(total));
+      }
+    } catch (e) { text = text.replaceAll("{users}", "?"); }
+    try {
+      if (text.includes("{channels}")) {
+        const total = client.guilds.cache.reduce((sum, g) => sum + (g.channels?.cache?.size || 0), 0);
+        text = text.replaceAll("{channels}", String(total));
+      }
+    } catch (e) { text = text.replaceAll("{channels}", "?"); }
+    try {
+      if (text.includes("{latency}")) {
+        const lat = client.ws.ping;
+        if (lat == null || !isFinite(lat) || lat < 0 || lat > 5000) {
+          text = text.replaceAll("{latency}", "...");
+        } else {
+          text = text.replaceAll("{latency}", String(Math.round(lat)));
+        }
+      }
+    } catch (e) { text = text.replaceAll("{latency}", "?"); }
+    try {
+      if (text.includes("{commands}")) {
+        const count = client.commands && typeof client.commands.size === "number" ? client.commands.size : 0;
+        text = text.replaceAll("{commands}", String(count));
+      }
+    } catch (e) { text = text.replaceAll("{commands}", "0"); }
+    try {
+      if (text.includes("{uptime}")) {
+        if (_bxStartupTime != null) {
+          const elapsed = (Date.now() - _bxStartupTime) / 1000;
+          const h = Math.floor(elapsed / 3600);
+          const m = Math.floor((elapsed % 3600) / 60);
+          text = text.replaceAll("{uptime}", h > 0 ? h + "h " + m + "m" : m + "m");
+        } else {
+          text = text.replaceAll("{uptime}", "0m");
+        }
+      }
+    } catch (e) { text = text.replaceAll("{uptime}", "?"); }
+    return text;
+  }
+
+  function _bxBuildPresence(status, activityType, activityText) {
+    const activities = [];
+    const type = (activityType || "none").toLowerCase();
+    if (type !== "none" && activityText && activityText.trim()) {
+      const mapped = _BX_ACTIVITY_MAP[type];
+      if (mapped !== undefined) {
+        const activity = { name: activityText, type: mapped };
+        if (type === "streaming") activity.url = "https://twitch.tv/placeholder";
+        activities.push(activity);
+      }
+    }
+    return { status: status || "online", activities };
+  }
+
+  async function _bxFetchPresence() {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000);
+      const resp = await fetch(_BX_API_URL + "/api/bot-internal/presence", {
+        headers: { "X-Bot-Id": _BX_BOT_ID, "X-Bot-Token": _BX_TOKEN },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      return data.presence || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function _bxCheckAndApplyPresence(client, force) {
+    try {
+      const presence = await _bxFetchPresence();
+      if (!presence) return false;
+      const updatedAt = presence.updatedAt;
+      const rawText = presence.activityText || "";
+      const hasVars = rawText.indexOf("{") !== -1;
+      const now = Date.now();
+      const isNewSave = updatedAt !== _bxAppliedUpdateAt;
+      const varCooldownOk = (now - _bxLastVarPush) >= _BX_VAR_COOLDOWN_MS;
+
+      if (!force && !isNewSave && !(hasVars && varCooldownOk)) return false;
+
+      const resolvedText = _bxResolveVars(client, rawText);
+      const presenceData = _bxBuildPresence(presence.status, presence.activityType, resolvedText);
+      client.user.setPresence(presenceData);
+      _bxAppliedUpdateAt = updatedAt;
+      if (hasVars || force) _bxLastVarPush = now;
+      return true;
+    } catch (e) {
+      return false; // never crash the bot on a poll error
+    }
+  }
+
+  function _bxStartPresence(client) {
+    setTimeout(async () => {
+      _bxStartupTime = Date.now();
+      try {
+        const statusStr = process.env.BOT_STATUS || "online";
+        const actType = process.env.BOT_ACTIVITY_TYPE || "none";
+        const actText = _bxResolveVars(client, (process.env.BOT_ACTIVITY_TEXT || "").trim());
+        client.user.setPresence(_bxBuildPresence(statusStr, actType, actText));
+        console.error("[BlockerX] Presencia inicial: " + statusStr + " / " + actType + " / " + actText);
+      } catch (e) {
+        console.error("[BlockerX] Error presencia inicial:", e && e.message);
+      }
+
+      setInterval(() => { _bxCheckAndApplyPresence(client, false); }, 3000);
+
+      // "Aplicar ahora" desde el panel: fuerza un chequeo inmediato sin esperar el poll.
+      try {
+        process.on("SIGUSR2", () => { _bxCheckAndApplyPresence(client, true); });
+      } catch (e) {
+        // Signal handling unsupported on this platform — polling still applies changes.
+      }
+    }, 1000);
+  }
+
+  console.error("[BlockerX] Proteccion anti-duplicados y presencia en tiempo real cargadas.");
 } catch (e) {
-  console.error("[BlockerX] No se pudo cargar proteccion anti-duplicados:", e && e.message);
+  console.error("[BlockerX] No se pudo cargar el parche de BlockerX:", e && e.message);
 }
 `;
 }
