@@ -907,14 +907,14 @@ export default function BotDetailPage() {
                               href={`/api/files/${botId}/download?path=${encodeURIComponent(f.path)}`}
                               download={f.name}
                               onClick={(e) => e.stopPropagation()}
-                              className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-accent text-muted-foreground hover:text-foreground transition-opacity">
+                              className={`p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-opacity ${selectedFile === f.path ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
                               <Download className="w-3.5 h-3.5" />
                             </a>
                             <div className="relative">
                               <button
                                 title="Opciones"
                                 onClick={(e) => { e.stopPropagation(); setOpenFileMenu(openFileMenu === f.path ? null : f.path); }}
-                                className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-accent text-muted-foreground hover:text-foreground transition-opacity">
+                                className={`p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-opacity ${selectedFile === f.path ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
                                 <MoreHorizontal className="w-3.5 h-3.5" />
                               </button>
                               {openFileMenu === f.path && (
@@ -1258,14 +1258,7 @@ export default function BotDetailPage() {
             </Card>
 
             <Card className="bg-card/60 border-border/40">
-              <CardHeader className="flex-row items-center justify-between">
-                <CardTitle className="text-sm">Presencia y Estado</CardTitle>
-                <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs gap-1 text-muted-foreground hover:bg-accent/30" title="Exportar proyecto como .zip"
-                  onClick={handleExportProject} disabled={exportingZip}>
-                  {exportingZip ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-                  <span className="hidden sm:inline">Exportar</span>
-                </Button>
-              </CardHeader>
+              <CardHeader><CardTitle className="text-sm">Presencia y Estado</CardTitle></CardHeader>
               <CardContent className="space-y-5">
                 <p className="text-xs text-muted-foreground">
                   Configura el estado y la actividad que verán los usuarios en Discord. Los cambios se aplican inmediatamente sin reiniciar el bot.
