@@ -8,7 +8,7 @@ export default function AdminPage() {
 
   const statItems = [
     { label: "Total Users", value: (stats as any)?.totalUsers, icon: Users },
-    { label: "Premium Users", value: (stats as any)?.premiumUsers, icon: Users },
+    { label: "Blocker Plus X Users", value: (stats as any)?.premiumUsers, icon: Users },
     { label: "Banned Users", value: (stats as any)?.bannedUsers, icon: Users },
     { label: "Total Bots", value: (stats as any)?.totalBots, icon: TerminalSquare },
     { label: "Running Bots", value: (stats as any)?.runningBots, icon: Bot },

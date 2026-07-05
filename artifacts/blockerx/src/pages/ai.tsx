@@ -467,7 +467,7 @@ export default function AiPage() {
       {remaining !== null && remaining <= 2 && (
         <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-4 py-3 text-sm text-yellow-400">
           {remaining === 0
-            ? "Límite diario alcanzado. Actualiza a Premium para IA ilimitada."
+            ? "Límite diario alcanzado. Activa Blocker Plus X para IA ilimitada."
             : `${remaining} uso${remaining === 1 ? "" : "s"} restante${remaining === 1 ? "" : "s"} hoy en el plan gratuito.`}
         </div>
       )}

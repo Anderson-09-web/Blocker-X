@@ -161,7 +161,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate">{user?.username}</p>
-            <p className="text-xs text-muted-foreground">{user?.plan === "premium" ? "Premium" : "Free Plan"}</p>
+            <p className="text-xs text-muted-foreground">{user?.plan === "premium" ? "Blocker Plus X" : "Free Plan"}</p>
           </div>
         </div>
         <button

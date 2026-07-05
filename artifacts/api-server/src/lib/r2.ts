@@ -65,6 +65,18 @@ export async function r2ReadFile(key: string): Promise<string> {
   return Buffer.concat(chunks).toString("utf-8");
 }
 
+export async function r2ReadFileBuffer(key: string): Promise<Buffer> {
+  const command = new GetObjectCommand({ Bucket: bucketName, Key: key });
+  const response = await r2Client.send(command);
+  const body = response.Body;
+  if (!body) throw new Error("Empty file body");
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of body as AsyncIterable<Uint8Array>) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
 export async function r2WriteFile(key: string, content: string, contentType = "text/plain"): Promise<void> {
   const command = new PutObjectCommand({
     Bucket: bucketName,

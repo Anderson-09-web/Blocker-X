@@ -37,7 +37,7 @@ export default function UsagePoliciesPage() {
           <section className="space-y-2">
             <h2 className="text-base font-semibold text-foreground">3. Resource limits</h2>
             <p>
-              Free plan bots are subject to scheduled restarts and resource limits. Premium plan bots
+              Free plan bots are subject to scheduled restarts and resource limits. Blocker Plus X bots
               run continuously without forced restarts. Abuse of platform resources may result in
               account suspension.
             </p>

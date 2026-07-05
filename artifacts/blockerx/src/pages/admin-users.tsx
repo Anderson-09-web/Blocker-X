@@ -14,7 +14,7 @@ const ACTION_LABELS: Record<string, string> = {
   ban: "banned",
   unban: "unbanned",
   delete: "deleted",
-  upgrade: "upgraded to Premium",
+  upgrade: "upgraded to Blocker Plus X",
   downgrade: "downgraded to Free",
 };
 
@@ -84,7 +84,7 @@ export default function AdminUsersPage() {
                       <p className="text-xs text-muted-foreground">Joined {new Date(u.createdAt).toLocaleDateString()}</p>
                     </div>
                     <span className={`text-xs px-2 py-0.5 rounded-full border ${u.plan === "premium" ? "bg-amber-500/15 text-amber-400 border-amber-500/20" : "bg-gray-500/15 text-gray-400 border-gray-500/20"}`}>
-                      {u.plan}
+                      {u.plan === "premium" ? "Blocker Plus X" : u.plan}
                     </span>
                     <span className={`text-xs px-2 py-0.5 rounded-full border ${u.isBanned ? "bg-red-500/15 text-red-400 border-red-500/20" : "bg-green-500/15 text-green-400 border-green-500/20"}`}>
                       {u.isBanned ? "Banned" : "Active"}
@@ -100,7 +100,7 @@ export default function AdminUsersPage() {
                         </Button>
                       )}
                       {u.plan === "free" ? (
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-amber-400 hover:bg-amber-500/10" title="Upgrade to Premium" onClick={() => handle("upgrade", u.id, u.username)}>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-amber-400 hover:bg-amber-500/10" title="Upgrade to Blocker Plus X" onClick={() => handle("upgrade", u.id, u.username)}>
                           <ChevronUp className="w-3.5 h-3.5" />
                         </Button>
                       ) : (

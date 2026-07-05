@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Square, RotateCcw, Rocket, Plus, Trash2, Save, Folder, FileText, ChevronLeft, Settings, BookOpen, FilePlus, FolderPlus, X, Loader2, RefreshCw, ChevronRight, FolderInput, AlertTriangle, Share2, Users, Crown, Bot } from "lucide-react";
+import { Play, Square, RotateCcw, Rocket, Plus, Trash2, Save, Folder, FileText, ChevronLeft, Settings, BookOpen, FilePlus, FolderPlus, X, Loader2, RefreshCw, ChevronRight, FolderInput, AlertTriangle, Share2, Users, Crown, Bot, Download, Edit2, Eye, EyeOff, ShieldCheck, ShieldAlert, ExternalLink, Upload } from "lucide-react";
 import { Link } from "wouter";
 
 function StatusBadge({ status }: { status: string }) {
@@ -162,6 +162,12 @@ export default function BotDetailPage() {
   const [shares, setShares] = useState<any[]>([]);
   const [sharesLoading, setSharesLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("files");
+  const [exportingZip, setExportingZip] = useState(false);
+  const [editingEnvVar, setEditingEnvVar] = useState<{ id: string; key: string } | null>(null);
+  const [editingEnvVal, setEditingEnvVal] = useState("");
+  const [visibleEnvIds, setVisibleEnvIds] = useState<Set<string>>(new Set());
+  const [checkingIntents, setCheckingIntents] = useState(false);
+  const [intentsResult, setIntentsResult] = useState<{ valid: boolean; botName?: string; error?: string } | null>(null);
 
   const { user: currentUser } = useAuth();
 
@@ -376,7 +382,9 @@ export default function BotDetailPage() {
 
   const handleCreateFolder = () => {
     if (!newFolderName.trim()) return;
-    createFolder.mutate({ botId, data: { path: newFolderName.trim() } }, {
+    // Support nested folder creation — prefix with current folder path
+    const folderPath = currentFolder ? `${currentFolder}/${newFolderName.trim()}` : newFolderName.trim();
+    createFolder.mutate({ botId, data: { path: folderPath } }, {
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: getListFilesQueryKey(botId) });
         toast({ title: `Carpeta "${newFolderName}" creada` });
@@ -385,6 +393,64 @@ export default function BotDetailPage() {
       },
       onError: () => toast({ title: "Error al crear la carpeta", variant: "destructive" }),
     });
+  };
+
+  const handleExportProject = async () => {
+    setExportingZip(true);
+    try {
+      const res = await fetch(`/api/files/${botId}/export`, { credentials: "include" });
+      if (!res.ok) { const d = await res.json(); toast({ title: d.error || "Error al exportar", variant: "destructive" }); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      a.download = match ? match[1] : `${(bot as any)?.name || botId}-project.zip`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({ title: "Proyecto exportado" });
+    } catch {
+      toast({ title: "Error al exportar el proyecto", variant: "destructive" });
+    } finally {
+      setExportingZip(false);
+    }
+  };
+
+  const handleUploadZipFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64 = (e.target?.result as string).split(",")[1];
+      const filePath = currentFolder ? `/${currentFolder}` : "/";
+      uploadFile.mutate({ botId, data: { path: filePath, name: file.name, content: base64, encoding: "base64" } }, {
+        onSuccess: () => { refetchFiles(); toast({ title: `${file.name} subido correctamente` }); },
+        onError: () => toast({ title: "Error al subir el archivo", variant: "destructive" }),
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCheckIntents = async () => {
+    setCheckingIntents(true);
+    setIntentsResult(null);
+    try {
+      const tokenVar = (envVars as any[])?.find((v: any) => ["DISCORD_TOKEN", "BOT_TOKEN", "TOKEN"].includes(v.key));
+      if (!tokenVar) {
+        setIntentsResult({ valid: false, error: "No se encontró DISCORD_TOKEN en las variables de entorno. Agrégala en la pestaña Environment." });
+        setCheckingIntents(false); return;
+      }
+      const res = await fetch("/api/bots/verify-token", {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify({ token: tokenVar.value }),
+      });
+      const data = await res.json();
+      if (!res.ok) setIntentsResult({ valid: false, error: data.error || "Token inválido o expirado" });
+      else setIntentsResult({ valid: true, botName: data.username });
+    } catch {
+      setIntentsResult({ valid: false, error: "No se pudo conectar con Discord" });
+    } finally {
+      setCheckingIntents(false);
+    }
   };
 
   const handleAddEnv = () => {
@@ -539,7 +605,7 @@ export default function BotDetailPage() {
               <Share2 className="w-3 h-3 mr-1" />Share
             </Button>
           ) : (
-            <Button size="sm" variant="ghost" className="text-muted-foreground cursor-default" disabled title="Premium feature">
+            <Button size="sm" variant="ghost" className="text-muted-foreground cursor-default" disabled title="Blocker Plus X feature">
               <Crown className="w-3 h-3 mr-1 text-yellow-400/60" />Share
             </Button>
           ))}
@@ -762,18 +828,27 @@ export default function BotDetailPage() {
             <Card className="bg-card/60 border-border/40">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm">Archivos</CardTitle>
+                  <div className="flex items-center gap-1 min-w-0">
+                    <CardTitle className="text-sm">Archivos</CardTitle>
+                    <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs gap-1 text-muted-foreground hover:bg-accent/30 ml-1" title="Exportar proyecto como .zip"
+                      onClick={handleExportProject} disabled={exportingZip}>
+                      {exportingZip ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                      <span className="hidden sm:inline">Exportar</span>
+                    </Button>
+                  </div>
                   <div className="flex gap-1">
                     <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1 text-primary hover:bg-primary/10"
                       onClick={() => { setShowNewFile(true); setShowNewFolder(false); }}>
                       <FilePlus className="w-3.5 h-3.5" />Nuevo
                     </Button>
-                    {!currentFolder && (
-                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:bg-accent/30"
-                        onClick={() => { setShowNewFolder(true); setShowNewFile(false); }}>
-                        <FolderPlus className="w-3.5 h-3.5" />Carpeta
-                      </Button>
-                    )}
+                    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:bg-accent/30"
+                      onClick={() => { setShowNewFolder(true); setShowNewFile(false); }}>
+                      <FolderPlus className="w-3.5 h-3.5" />Carpeta
+                    </Button>
+                    <label title="Subir archivo (incluye .zip)" className="h-7 px-2 text-xs gap-1 flex items-center cursor-pointer rounded text-muted-foreground hover:bg-accent/30 transition-colors">
+                      <Upload className="w-3.5 h-3.5" />Subir
+                      <input type="file" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadZipFile(f); e.target.value = ""; }} />
+                    </label>
                   </div>
                 </div>
               </CardHeader>
@@ -902,15 +977,60 @@ export default function BotDetailPage() {
                   <p className="text-sm text-muted-foreground p-4 text-center">No hay variables configuradas.</p>
                 )}
                 {(envVars as any[])?.map((v: any) => (
-                  <div key={v.id} className="flex items-center justify-between px-4 py-2.5">
-                    <div className="flex items-center gap-4">
-                      <span className="font-mono text-sm font-medium">{v.key}</span>
-                      <span className="font-mono text-xs text-muted-foreground">{"•".repeat(8)}</span>
-                    </div>
-                    <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10 h-7 w-7 p-0"
-                      onClick={() => deleteEnvVar.mutate({ botId, varId: v.id }, { onSuccess: () => qc.invalidateQueries({ queryKey: getListEnvVarsQueryKey(botId) }) })}>
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
+                  <div key={v.id} className="flex flex-col gap-1 px-4 py-2.5">
+                    {editingEnvVar?.id === v.id ? (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-sm font-medium min-w-0 flex-shrink-0">{v.key}</span>
+                        <Input
+                          value={editingEnvVal}
+                          onChange={e => setEditingEnvVal(e.target.value)}
+                          placeholder="nuevo valor"
+                          className="font-mono text-sm flex-1 min-w-0 h-7"
+                          onKeyDown={e => {
+                            if (e.key === "Enter") {
+                              setEnvVar.mutate({ botId, data: { key: v.key, value: editingEnvVal } }, {
+                                onSuccess: () => { qc.invalidateQueries({ queryKey: getListEnvVarsQueryKey(botId) }); setEditingEnvVar(null); toast({ title: `${v.key} actualizada` }); },
+                                onError: () => toast({ title: "Error al guardar", variant: "destructive" }),
+                              });
+                            } else if (e.key === "Escape") { setEditingEnvVar(null); }
+                          }}
+                          autoFocus
+                        />
+                        <Button size="sm" className="h-7 px-2 text-xs" onClick={() => {
+                          setEnvVar.mutate({ botId, data: { key: v.key, value: editingEnvVal } }, {
+                            onSuccess: () => { qc.invalidateQueries({ queryKey: getListEnvVarsQueryKey(botId) }); setEditingEnvVar(null); toast({ title: `${v.key} actualizada` }); },
+                            onError: () => toast({ title: "Error al guardar", variant: "destructive" }),
+                          });
+                        }}>Guardar</Button>
+                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setEditingEnvVar(null)}>Cancelar</Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4 min-w-0">
+                          <span className="font-mono text-sm font-medium truncate">{v.key}</span>
+                          <span className="font-mono text-xs text-muted-foreground">
+                            {visibleEnvIds.has(v.id) ? v.value : "•".repeat(8)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                            title={visibleEnvIds.has(v.id) ? "Ocultar valor" : "Mostrar valor"}
+                            onClick={() => setVisibleEnvIds(prev => { const s = new Set(prev); s.has(v.id) ? s.delete(v.id) : s.add(v.id); return s; })}>
+                            {visibleEnvIds.has(v.id) ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
+                            title="Editar valor"
+                            onClick={() => { setEditingEnvVar({ id: v.id, key: v.key }); setEditingEnvVal(""); }}>
+                            <Edit2 className="w-3 h-3" />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10 h-7 w-7 p-0"
+                            title="Eliminar variable"
+                            onClick={() => deleteEnvVar.mutate({ botId, varId: v.id }, { onSuccess: () => qc.invalidateQueries({ queryKey: getListEnvVarsQueryKey(botId) }) })}>
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1075,7 +1195,7 @@ export default function BotDetailPage() {
               <CardHeader><CardTitle className="text-sm">Presencia y Estado</CardTitle></CardHeader>
               <CardContent className="space-y-5">
                 <p className="text-xs text-muted-foreground">
-                  Configura el estado y la actividad que verán los usuarios en Discord. Los cambios se aplican al reiniciar el bot.
+                  Configura el estado y la actividad que verán los usuarios en Discord. Los cambios se aplican inmediatamente sin reiniciar el bot.
                 </p>
 
                 {/* Status selector */}
@@ -1129,15 +1249,26 @@ export default function BotDetailPage() {
                       value={settingsActivityText}
                       onChange={e => setSettingsActivityText(e.target.value)}
                       placeholder={
-                        settingsActivityType === "playing" ? "ej. Minecraft" :
-                        settingsActivityType === "watching" ? "ej. usuarios globales" :
+                        settingsActivityType === "playing" ? "ej. {guilds} servidores" :
+                        settingsActivityType === "watching" ? "ej. {users} usuarios" :
                         settingsActivityType === "listening" ? "ej. lo-fi beats" :
                         settingsActivityType === "streaming" ? "ej. Blocker X" :
-                        "ej. torneos"
+                        "ej. {guilds} torneos"
                       }
-                      className="text-sm"
+                      className="text-sm font-mono"
                       maxLength={128}
                     />
+                    {/* Dynamic variable chips */}
+                    <div className="flex flex-wrap gap-1.5">
+                      <p className="text-xs text-muted-foreground/60 w-full">Variables dinámicas (se actualizan cada 10s):</p>
+                      {["{users}", "{guilds}", "{channels}", "{commands}", "{latency}", "{uptime}"].map(v => (
+                        <button key={v} type="button"
+                          onClick={() => setSettingsActivityText(t => t + v)}
+                          className="text-xs font-mono px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors">
+                          {v}
+                        </button>
+                      ))}
+                    </div>
                     <p className="text-xs text-muted-foreground/60">
                       Vista previa: <span className="text-foreground/70 font-medium">
                         {settingsActivityType === "playing" ? "Jugando a" :
@@ -1207,6 +1338,55 @@ export default function BotDetailPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Discord Intents checker */}
+          <Card className="bg-card/60 border-border/40 mt-4">
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-primary" /> Discord Intents
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                Los Intents de Discord deben activarse en el Developer Portal para que tu bot pueda leer mensajes y ver miembros.
+              </p>
+              <Button size="sm" variant="outline" onClick={handleCheckIntents} disabled={checkingIntents} className="gap-2">
+                {checkingIntents ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                Verificar token del bot
+              </Button>
+              {intentsResult && (
+                <div className={`rounded-lg px-4 py-3 border text-sm ${intentsResult.valid ? "bg-green-500/10 border-green-500/20 text-green-400" : "bg-red-500/10 border-red-500/20 text-red-400"}`}>
+                  {intentsResult.valid ? (
+                    <div className="space-y-2">
+                      <p className="flex items-center gap-2"><ShieldCheck className="w-4 h-4 shrink-0" />Token válido — Bot: <strong>{intentsResult.botName}</strong></p>
+                      <p className="text-xs text-muted-foreground">Si tu bot no ve mensajes, activa los intents en el portal:</p>
+                    </div>
+                  ) : (
+                    <p className="flex items-center gap-2"><ShieldAlert className="w-4 h-4 shrink-0" />{intentsResult.error}</p>
+                  )}
+                </div>
+              )}
+              <div className="space-y-2 text-xs text-muted-foreground">
+                <p className="font-medium text-foreground/80">Intents recomendados para activar:</p>
+                {[
+                  { name: "Message Content Intent", desc: "Permite leer el contenido de mensajes" },
+                  { name: "Server Members Intent", desc: "Permite ver la lista de miembros" },
+                  { name: "Presence Intent", desc: "Permite ver la presencia de usuarios" },
+                ].map(i => (
+                  <div key={i.name} className="flex items-start gap-2 p-2 rounded bg-muted/20 border border-border/20">
+                    <ShieldCheck className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                    <div><p className="font-medium text-foreground/70">{i.name}</p><p>{i.desc}</p></div>
+                  </div>
+                ))}
+                <a
+                  href={`https://discord.com/developers/applications`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors font-medium mt-1">
+                  <ExternalLink className="w-3.5 h-3.5" /> Abrir Discord Developer Portal
+                </a>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Guide */}

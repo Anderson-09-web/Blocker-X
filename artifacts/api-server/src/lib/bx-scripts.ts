@@ -43,6 +43,39 @@ try:
         "competing": _d.ActivityType.competing,
     }
 
+    _bx_startup_time = None
+
+    def _bx_resolve_vars(client, text):
+        """Replace dynamic variables like {users}, {guilds}, {latency}, {uptime}, {channels}, {commands}."""
+        if "{" not in text:
+            return text
+        try:
+            guild_list = list(client.guilds)
+            replacements = {
+                "{users}":    str(sum(getattr(g, "member_count", 0) or 0 for g in guild_list)),
+                "{guilds}":   str(len(guild_list)),
+                "{channels}": str(sum(len(g.channels) for g in guild_list)),
+                "{latency}":  str(round(client.latency * 1000)),
+            }
+            # {commands} — works for commands.Bot (has all_commands)
+            if hasattr(client, "all_commands"):
+                replacements["{commands}"] = str(len(client.all_commands))
+            else:
+                replacements["{commands}"] = "0"
+            # {uptime}
+            if _bx_startup_time is not None:
+                elapsed = _asyncio.get_event_loop().time() - _bx_startup_time
+                h = int(elapsed // 3600)
+                m = int((elapsed % 3600) // 60)
+                replacements["{uptime}"] = f"{h}h {m}m" if h > 0 else f"{m}m"
+            else:
+                replacements["{uptime}"] = "0m"
+            for var, val in replacements.items():
+                text = text.replace(var, val)
+        except Exception:
+            pass
+        return text
+
     def _bx_build_presence(status_str, act_type_str, act_text):
         status = _BX_STATUS_MAP.get(status_str, _d.Status.online)
         act_type = act_type_str.lower()
@@ -71,20 +104,21 @@ try:
     _bx_poll_task = None          # guard: only one polling task per client
 
     def _bx_patched_dispatch(self, event, *args, **kwargs):
-        global _bx_applied_update_at, _bx_poll_task
+        global _bx_applied_update_at, _bx_poll_task, _bx_startup_time
         _bx_orig_dispatch(self, event, *args, **kwargs)
         if event == "ready":
             async def _on_ready_presence():
-                global _bx_applied_update_at, _bx_poll_task
+                global _bx_applied_update_at, _bx_poll_task, _bx_startup_time
                 await _asyncio.sleep(1)
-                # Apply env-var presence on startup
+                _bx_startup_time = _asyncio.get_event_loop().time()
+                # Apply env-var presence on startup (resolve dynamic variables)
                 status_str = _os.getenv("BOT_STATUS", "online")
                 act_type   = _os.getenv("BOT_ACTIVITY_TYPE", "none")
-                act_text   = _os.getenv("BOT_ACTIVITY_TEXT", "").strip()
+                act_text   = _bx_resolve_vars(self, _os.getenv("BOT_ACTIVITY_TEXT", "").strip())
                 st, act = _bx_build_presence(status_str, act_type, act_text)
                 try:
                     await self.change_presence(status=st, activity=act)
-                    print(f"[BlockerX] Presencia inicial: {status_str} / {act_type}", file=_sys.stderr, flush=True)
+                    print(f"[BlockerX] Presencia inicial: {status_str} / {act_type} / {act_text}", file=_sys.stderr, flush=True)
                 except Exception as _e:
                     print(f"[BlockerX] Error presencia inicial: {_e}", file=_sys.stderr, flush=True)
 
@@ -93,7 +127,8 @@ try:
                     _bx_poll_task.cancel()
 
                 async def _bx_poll_presence(client):
-                    """Poll panel every 10s and apply presence changes without restart."""
+                    """Poll panel every 10s and apply presence changes without restart.
+                    If activity text contains dynamic vars ({users}, {guilds} etc.), re-applies every cycle."""
                     global _bx_applied_update_at
                     while True:
                         await _asyncio.sleep(10)
@@ -103,20 +138,19 @@ try:
                             if presence is None:
                                 continue
                             updated_at = presence.get("updatedAt")
-                            if updated_at == _bx_applied_update_at:
-                                continue  # No change since last apply
+                            raw_text = presence.get("activityText", "")
+                            has_vars = "{" in raw_text
+                            # Re-apply every poll if vars present (keeps stats fresh), else only on change
+                            if updated_at == _bx_applied_update_at and not has_vars:
+                                continue
                             _bx_applied_update_at = updated_at
+                            resolved_text = _bx_resolve_vars(client, raw_text)
                             st, act = _bx_build_presence(
                                 presence.get("status", "online"),
                                 presence.get("activityType", "none"),
-                                presence.get("activityText", ""),
+                                resolved_text,
                             )
                             await client.change_presence(status=st, activity=act)
-                            print(
-                                f"[BlockerX] Presencia en tiempo real: "
-                                f"{presence.get('status')} / {presence.get('activityType')} / {presence.get('activityText')}",
-                                file=_sys.stderr, flush=True,
-                            )
                         except _asyncio.CancelledError:
                             raise  # Let cancellation propagate
                         except Exception:

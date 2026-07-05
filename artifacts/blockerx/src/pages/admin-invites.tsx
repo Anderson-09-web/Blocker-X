@@ -41,7 +41,7 @@ export default function AdminInvitesPage() {
       onSuccess: () => {
         refresh();
         setDialogMode(null);
-        toast({ title: grantsPremium ? "Premium key created" : "Invite code created" });
+        toast({ title: grantsPremium ? "Blocker Plus X key created" : "Invite code created" });
       },
       onError: () => toast({ title: "Failed to create", variant: "destructive" }),
     });
@@ -59,14 +59,14 @@ export default function AdminInvitesPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Invite Codes</h1>
-          <p className="text-muted-foreground mt-1">Manage platform access and premium keys</p>
+          <p className="text-muted-foreground mt-1">Manage platform access and Blocker Plus X keys</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => openDialog("invite")} data-testid="button-create-invite">
             <Plus className="w-4 h-4 mr-2" /> Create Invite Code
           </Button>
           <Button onClick={() => openDialog("premium")} className="bg-yellow-500 hover:bg-yellow-600 text-black" data-testid="button-create-premium">
-            <Crown className="w-4 h-4 mr-2" /> Create Premium Key
+            <Crown className="w-4 h-4 mr-2" /> Create Blocker Plus X Key
           </Button>
         </div>
       </div>
@@ -95,7 +95,7 @@ export default function AdminInvitesPage() {
                       </span>
                       {c.grantsPremium && (
                         <span className="text-xs px-1.5 py-0.5 rounded-full border bg-yellow-500/15 text-yellow-400 border-yellow-500/20 flex items-center gap-1">
-                          <Crown className="w-2.5 h-2.5" /> Premium
+                          <Crown className="w-2.5 h-2.5" /> Blocker Plus X
                         </span>
                       )}
                     </div>
@@ -127,13 +127,13 @@ export default function AdminInvitesPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {isPremiumMode ? <Crown className="w-4 h-4 text-yellow-400" /> : <KeyRound className="w-4 h-4" />}
-              {isPremiumMode ? "Create Premium Key" : "Create Invite Code"}
+              {isPremiumMode ? "Create Blocker Plus X Key" : "Create Invite Code"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {isPremiumMode && (
               <div className="p-3 rounded-md border border-yellow-500/20 bg-yellow-500/5 text-sm text-yellow-300">
-                When redeemed, this code will automatically upgrade the user to Premium.
+                When redeemed, this code will automatically upgrade the user to Blocker Plus X.
               </div>
             )}
             <div>
@@ -151,7 +151,7 @@ export default function AdminInvitesPage() {
             <Button variant="outline" onClick={() => setDialogMode(null)}>Cancel</Button>
             <Button onClick={handleCreate} disabled={createInvite.isPending} data-testid="button-submit-invite"
               className={isPremiumMode ? "bg-yellow-500 hover:bg-yellow-600 text-black" : ""}>
-              {createInvite.isPending ? "Creating..." : isPremiumMode ? "Create Premium Key" : "Create Invite Code"}
+              {createInvite.isPending ? "Creating..." : isPremiumMode ? "Create Blocker Plus X Key" : "Create Invite Code"}
             </Button>
           </DialogFooter>
         </DialogContent>

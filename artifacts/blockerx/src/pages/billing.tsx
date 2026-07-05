@@ -23,6 +23,8 @@ const PREMIUM_FEATURES = [
   { icon: Crown, text: "Soporte prioritario" },
 ];
 
+const PLAN_DISPLAY = "Blocker Plus X";
+
 export default function BillingPage() {
   const { data: profile, refetch } = useGetProfile();
   const user = (profile as any)?.user;
@@ -48,7 +50,7 @@ export default function BillingPage() {
         toast({ title: "Clave inválida", description: data.error, variant: "destructive" });
       } else {
         toast({
-          title: data.grantsPremium ? "🎉 ¡Premium activado!" : "Clave canjeada",
+          title: data.grantsPremium ? `🎉 ¡${PLAN_DISPLAY} activado!` : "Clave canjeada",
           description: data.message,
         });
         setKeyInput("");
@@ -74,12 +76,12 @@ export default function BillingPage() {
         <Crown className={`w-5 h-5 shrink-0 ${currentPlan === "premium" ? "text-yellow-400" : "text-muted-foreground"}`} />
         <div>
           <p className="font-semibold text-sm">
-            {currentPlan === "premium" ? "Plan Premium activo" : "Plan Free"}
+            {currentPlan === "premium" ? `Plan ${PLAN_DISPLAY} activo` : "Plan Free"}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">
             {currentPlan === "premium"
               ? "Tienes acceso completo a todas las funciones de Blocker X."
-              : "Canjea una clave premium para desbloquear todas las funciones."}
+              : `Canjea una clave ${PLAN_DISPLAY} para desbloquear todas las funciones.`}
           </p>
         </div>
       </div>
@@ -116,7 +118,7 @@ export default function BillingPage() {
           </div>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center justify-between">
-              <span className="flex items-center gap-2">Premium <Crown className="w-4 h-4 text-yellow-400" /></span>
+              <span className="flex items-center gap-2">{PLAN_DISPLAY} <Crown className="w-4 h-4 text-yellow-400" /></span>
               {currentPlan === "premium" && (
                 <span className="text-xs font-normal bg-yellow-400/10 text-yellow-400 px-2 py-0.5 rounded-full border border-yellow-400/20">Activo</span>
               )}
@@ -142,19 +144,19 @@ export default function BillingPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <Key className="w-4 h-4 text-primary" />
-            Canjear clave Premium
+            Canjear clave {PLAN_DISPLAY}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {currentPlan === "premium" ? (
             <div className="flex items-center gap-2 text-sm text-yellow-400 bg-yellow-400/5 border border-yellow-400/20 rounded-lg px-4 py-3">
               <Crown className="w-4 h-4 shrink-0" />
-              Ya tienes Premium activo. ¡Disfruta todas las funciones!
+              Ya tienes {PLAN_DISPLAY} activo. ¡Disfruta todas las funciones!
             </div>
           ) : (
             <>
               <p className="text-sm text-muted-foreground">
-                ¿Tienes una clave Premium? Ingrésala aquí para activar tu cuenta al instante.
+                ¿Tienes una clave {PLAN_DISPLAY}? Ingrésala aquí para activar tu cuenta al instante.
               </p>
               <div className="flex gap-2">
                 <Input
