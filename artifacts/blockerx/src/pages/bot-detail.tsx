@@ -167,7 +167,7 @@ export default function BotDetailPage() {
   const [editingEnvVal, setEditingEnvVal] = useState("");
   const [visibleEnvIds, setVisibleEnvIds] = useState<Set<string>>(new Set());
   const [checkingIntents, setCheckingIntents] = useState(false);
-  const [intentsResult, setIntentsResult] = useState<{ valid: boolean; botName?: string; error?: string } | null>(null);
+  const [intentsResult, setIntentsResult] = useState<{ valid: boolean; botName?: string; error?: string; intents?: { presence: boolean; serverMembers: boolean; messageContent: boolean } } | null>(null);
 
   const { user: currentUser } = useAuth();
 
@@ -434,18 +434,14 @@ export default function BotDetailPage() {
     setCheckingIntents(true);
     setIntentsResult(null);
     try {
-      const tokenVar = (envVars as any[])?.find((v: any) => ["DISCORD_TOKEN", "BOT_TOKEN", "TOKEN"].includes(v.key));
-      if (!tokenVar) {
-        setIntentsResult({ valid: false, error: "No se encontró DISCORD_TOKEN en las variables de entorno. Agrégala en la pestaña Environment." });
-        setCheckingIntents(false); return;
-      }
-      const res = await fetch("/api/bots/verify-token", {
-        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
-        body: JSON.stringify({ token: tokenVar.value }),
-      });
+      // Backend reads the stored token — token never leaves the server
+      const res = await fetch(`/api/bots/${botId}/check-intents`, { credentials: "include" });
       const data = await res.json();
-      if (!res.ok) setIntentsResult({ valid: false, error: data.error || "Token inválido o expirado" });
-      else setIntentsResult({ valid: true, botName: data.username });
+      if (!res.ok || !data.ok) {
+        setIntentsResult({ valid: false, error: data.error || "Error al verificar" });
+      } else {
+        setIntentsResult({ valid: true, botName: data.botName, intents: data.intents });
+      }
     } catch {
       setIntentsResult({ valid: false, error: "No se pudo conectar con Discord" });
     } finally {
@@ -892,12 +888,21 @@ export default function BotDetailPage() {
                       </button>
                       <div className="flex items-center gap-0 pr-1 shrink-0">
                         {f.type !== "directory" && (
-                          <button
-                            title="Mover a carpeta"
-                            onClick={() => { setMovingFile({ path: f.path, name: f.name }); setMoveTargetFolder(currentFolder || ""); setShowMoveModal(true); }}
-                            className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-accent text-muted-foreground hover:text-foreground transition-opacity">
-                            <FolderInput className="w-3.5 h-3.5" />
-                          </button>
+                          <>
+                            <a
+                              title="Descargar archivo"
+                              href={`/api/files/${botId}/download?path=${encodeURIComponent(f.path)}`}
+                              download={f.name}
+                              className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-accent text-muted-foreground hover:text-foreground transition-opacity">
+                              <Download className="w-3.5 h-3.5" />
+                            </a>
+                            <button
+                              title="Mover a carpeta"
+                              onClick={() => { setMovingFile({ path: f.path, name: f.name }); setMoveTargetFolder(currentFolder || ""); setShowMoveModal(true); }}
+                              className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-accent text-muted-foreground hover:text-foreground transition-opacity">
+                              <FolderInput className="w-3.5 h-3.5" />
+                            </button>
+                          </>
                         )}
                         <button
                           title={f.type === "directory" ? "Eliminar carpeta" : "Eliminar archivo"}
@@ -1352,36 +1357,48 @@ export default function BotDetailPage() {
               </p>
               <Button size="sm" variant="outline" onClick={handleCheckIntents} disabled={checkingIntents} className="gap-2">
                 {checkingIntents ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
-                Verificar token del bot
+                {checkingIntents ? "Verificando con Discord..." : "Verificar Intents del bot"}
               </Button>
-              {intentsResult && (
-                <div className={`rounded-lg px-4 py-3 border text-sm ${intentsResult.valid ? "bg-green-500/10 border-green-500/20 text-green-400" : "bg-red-500/10 border-red-500/20 text-red-400"}`}>
-                  {intentsResult.valid ? (
-                    <div className="space-y-2">
-                      <p className="flex items-center gap-2"><ShieldCheck className="w-4 h-4 shrink-0" />Token válido — Bot: <strong>{intentsResult.botName}</strong></p>
-                      <p className="text-xs text-muted-foreground">Si tu bot no ve mensajes, activa los intents en el portal:</p>
-                    </div>
-                  ) : (
-                    <p className="flex items-center gap-2"><ShieldAlert className="w-4 h-4 shrink-0" />{intentsResult.error}</p>
-                  )}
+
+              {/* Resultado de la verificación */}
+              {intentsResult && !intentsResult.valid && (
+                <div className="rounded-lg px-4 py-3 border bg-red-500/10 border-red-500/20 text-red-400 text-sm flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 shrink-0" />{intentsResult.error}
                 </div>
               )}
-              <div className="space-y-2 text-xs text-muted-foreground">
-                <p className="font-medium text-foreground/80">Intents recomendados para activar:</p>
-                {[
-                  { name: "Message Content Intent", desc: "Permite leer el contenido de mensajes" },
-                  { name: "Server Members Intent", desc: "Permite ver la lista de miembros" },
-                  { name: "Presence Intent", desc: "Permite ver la presencia de usuarios" },
-                ].map(i => (
-                  <div key={i.name} className="flex items-start gap-2 p-2 rounded bg-muted/20 border border-border/20">
-                    <ShieldCheck className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
-                    <div><p className="font-medium text-foreground/70">{i.name}</p><p>{i.desc}</p></div>
+              {intentsResult?.valid && intentsResult.intents && (
+                <div className="rounded-lg border border-border/30 overflow-hidden">
+                  <div className="px-3 py-2 bg-muted/20 border-b border-border/20 text-xs font-medium text-foreground/80 flex items-center gap-2">
+                    <ShieldCheck className="w-3.5 h-3.5 text-primary" />
+                    Bot: <strong>{intentsResult.botName}</strong> — Estado de intents privilegiados
                   </div>
-                ))}
+                  {[
+                    { key: "messageContent", label: "Message Content Intent", desc: "Leer contenido de mensajes", enabled: intentsResult.intents.messageContent },
+                    { key: "serverMembers",  label: "Server Members Intent",  desc: "Ver lista completa de miembros", enabled: intentsResult.intents.serverMembers },
+                    { key: "presence",       label: "Presence Intent",        desc: "Ver presencia de usuarios", enabled: intentsResult.intents.presence },
+                  ].map(i => (
+                    <div key={i.key} className={`flex items-center gap-3 px-3 py-2.5 border-b border-border/10 last:border-0 ${i.enabled ? "bg-green-500/5" : "bg-red-500/5"}`}>
+                      {i.enabled
+                        ? <ShieldCheck className="w-4 h-4 text-green-400 shrink-0" />
+                        : <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />}
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-xs font-medium ${i.enabled ? "text-green-400" : "text-red-400"}`}>{i.label}</p>
+                        <p className="text-xs text-muted-foreground">{i.desc}</p>
+                      </div>
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full border font-medium ${i.enabled ? "bg-green-500/15 text-green-400 border-green-500/20" : "bg-red-500/15 text-red-400 border-red-500/20"}`}>
+                        {i.enabled ? "Activado" : "Desactivado"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="space-y-1 text-xs text-muted-foreground pt-1">
+                <p>Activa los intents que necesites en el portal de Discord:</p>
                 <a
-                  href={`https://discord.com/developers/applications`}
+                  href="https://discord.com/developers/applications"
                   target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors font-medium mt-1">
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors font-medium">
                   <ExternalLink className="w-3.5 h-3.5" /> Abrir Discord Developer Portal
                 </a>
               </div>

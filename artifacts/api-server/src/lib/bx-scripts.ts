@@ -18,6 +18,8 @@ import sys as _sys
 import asyncio as _asyncio
 import json as _json
 import urllib.request as _ureq
+import time as _time_mod
+import math as _math_mod
 
 _BX_API_URL = _os.getenv("BX_API_URL", "http://127.0.0.1:3001")
 _BX_BOT_ID  = _os.getenv("BX_BOT_ID", "")
@@ -46,34 +48,75 @@ try:
     _bx_startup_time = None
 
     def _bx_resolve_vars(client, text):
-        """Replace dynamic variables like {users}, {guilds}, {latency}, {uptime}, {channels}, {commands}."""
+        """Replace dynamic variables like {users}, {guilds}, {latency}, {uptime}, {channels}, {commands}.
+        Each variable is resolved independently so a failure in one doesn't block the others."""
         if "{" not in text:
             return text
-        try:
-            guild_list = list(client.guilds)
-            replacements = {
-                "{users}":    str(sum(getattr(g, "member_count", 0) or 0 for g in guild_list)),
-                "{guilds}":   str(len(guild_list)),
-                "{channels}": str(sum(len(g.channels) for g in guild_list)),
-                "{latency}":  str(round(client.latency * 1000)),
-            }
-            # {commands} — works for commands.Bot (has all_commands)
-            if hasattr(client, "all_commands"):
-                replacements["{commands}"] = str(len(client.all_commands))
-            else:
-                replacements["{commands}"] = "0"
-            # {uptime}
-            if _bx_startup_time is not None:
-                elapsed = _asyncio.get_event_loop().time() - _bx_startup_time
-                h = int(elapsed // 3600)
-                m = int((elapsed % 3600) // 60)
-                replacements["{uptime}"] = f"{h}h {m}m" if h > 0 else f"{m}m"
-            else:
-                replacements["{uptime}"] = "0m"
-            for var, val in replacements.items():
-                text = text.replace(var, val)
-        except Exception:
-            pass
+
+        # {guilds}
+        if "{guilds}" in text:
+            try:
+                text = text.replace("{guilds}", str(len(list(client.guilds))))
+            except Exception:
+                text = text.replace("{guilds}", "?")
+
+        # {users}
+        if "{users}" in text:
+            try:
+                text = text.replace("{users}", str(sum(getattr(g, "member_count", 0) or 0 for g in client.guilds)))
+            except Exception:
+                text = text.replace("{users}", "?")
+
+        # {channels}
+        if "{channels}" in text:
+            try:
+                total = 0
+                for g in client.guilds:
+                    try:
+                        total += len(g.channels)
+                    except Exception:
+                        pass
+                text = text.replace("{channels}", str(total))
+            except Exception:
+                text = text.replace("{channels}", "?")
+
+        # {latency} — guard against inf/nan before heartbeat
+        if "{latency}" in text:
+            try:
+                lat = client.latency
+                if lat is None or _math_mod.isinf(lat) or _math_mod.isnan(lat):
+                    text = text.replace("{latency}", "...")
+                else:
+                    text = text.replace("{latency}", str(round(lat * 1000)))
+            except Exception:
+                text = text.replace("{latency}", "?")
+
+        # {commands} — works for commands.Bot
+        if "{commands}" in text:
+            try:
+                if hasattr(client, "all_commands"):
+                    text = text.replace("{commands}", str(len(client.all_commands)))
+                elif hasattr(client, "commands"):
+                    cmds = client.commands
+                    text = text.replace("{commands}", str(len(cmds)))
+                else:
+                    text = text.replace("{commands}", "0")
+            except Exception:
+                text = text.replace("{commands}", "0")
+
+        # {uptime} — use time.monotonic() instead of asyncio event loop time
+        if "{uptime}" in text:
+            try:
+                if _bx_startup_time is not None:
+                    elapsed = _time_mod.monotonic() - _bx_startup_time
+                    h = int(elapsed // 3600)
+                    m = int((elapsed % 3600) // 60)
+                    text = text.replace("{uptime}", f"{h}h {m}m" if h > 0 else f"{m}m")
+                else:
+                    text = text.replace("{uptime}", "0m")
+            except Exception:
+                text = text.replace("{uptime}", "?")
+
         return text
 
     def _bx_build_presence(status_str, act_type_str, act_text):
@@ -102,6 +145,7 @@ try:
     _bx_orig_dispatch = _d.Client.dispatch
     _bx_applied_update_at = None
     _bx_poll_task = None          # guard: only one polling task per client
+    _bx_startup_time = None  # module-level alias used by _bx_resolve_vars
 
     def _bx_patched_dispatch(self, event, *args, **kwargs):
         global _bx_applied_update_at, _bx_poll_task, _bx_startup_time
@@ -110,7 +154,7 @@ try:
             async def _on_ready_presence():
                 global _bx_applied_update_at, _bx_poll_task, _bx_startup_time
                 await _asyncio.sleep(1)
-                _bx_startup_time = _asyncio.get_event_loop().time()
+                _bx_startup_time = _time_mod.monotonic()
                 # Apply env-var presence on startup (resolve dynamic variables)
                 status_str = _os.getenv("BOT_STATUS", "online")
                 act_type   = _os.getenv("BOT_ACTIVITY_TYPE", "none")
@@ -143,14 +187,16 @@ try:
                             # Re-apply every poll if vars present (keeps stats fresh), else only on change
                             if updated_at == _bx_applied_update_at and not has_vars:
                                 continue
-                            _bx_applied_update_at = updated_at
                             resolved_text = _bx_resolve_vars(client, raw_text)
                             st, act = _bx_build_presence(
                                 presence.get("status", "online"),
                                 presence.get("activityType", "none"),
                                 resolved_text,
                             )
+                            # Only mark as applied AFTER change_presence succeeds.
+                            # If it throws, we retry next cycle instead of skipping forever.
                             await client.change_presence(status=st, activity=act)
+                            _bx_applied_update_at = updated_at
                         except _asyncio.CancelledError:
                             raise  # Let cancellation propagate
                         except Exception:

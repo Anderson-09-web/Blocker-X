@@ -150,6 +150,37 @@ router.post("/files/:botId/upload", requireAuth, requireInvite, async (req, res)
   }
 });
 
+// GET /files/:botId/download?path=... — download a single file from R2
+router.get("/files/:botId/download", requireAuth, requireInvite, async (req, res): Promise<void> => {
+  const user = (req as any).user;
+  const botId = Array.isArray(req.params.botId) ? req.params.botId[0] : req.params.botId;
+  const filePath = req.query.path as string;
+  if (!filePath) { res.status(400).json({ error: "path is required" }); return; }
+  const prefix = await getBotR2Prefix(botId, user.id);
+  if (!prefix) { res.status(404).json({ error: "Bot not found" }); return; }
+  // Security: path must be under this bot's R2 prefix
+  if (!filePath.startsWith(prefix + "/") && filePath !== prefix) {
+    res.status(403).json({ error: "Access denied" }); return;
+  }
+  try {
+    const buf = await r2ReadFileBuffer(filePath);
+    const fileName = filePath.split("/").pop() || "file";
+    const ext = fileName.split(".").pop()?.toLowerCase() || "";
+    const MIME: Record<string, string> = {
+      zip: "application/zip", json: "application/json", py: "text/x-python",
+      js: "text/javascript", ts: "text/typescript", md: "text/markdown",
+      txt: "text/plain", html: "text/html", css: "text/css", yaml: "text/yaml", yml: "text/yaml",
+    };
+    res.setHeader("Content-Type", MIME[ext] || "application/octet-stream");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    res.setHeader("Content-Length", buf.length);
+    res.end(buf);
+  } catch (err) {
+    req.log.error({ err }, "Download failed");
+    res.status(404).json({ error: "Archivo no encontrado" });
+  }
+});
+
 // GET /files/:botId/export — download all bot files as a ZIP archive
 router.get("/files/:botId/export", requireAuth, requireInvite, async (req, res): Promise<void> => {
   const user = (req as any).user;

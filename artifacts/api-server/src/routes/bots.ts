@@ -30,6 +30,58 @@ function getBotId(req: any): string {
   return Array.isArray(req.params.botId) ? req.params.botId[0] : req.params.botId;
 }
 
+// GET /bots/:botId/check-intents — reads stored token from DB, calls Discord, returns actual intent flags
+router.get("/bots/:botId/check-intents", requireAuth, requireInvite, async (req, res): Promise<void> => {
+  const botId = getBotId(req);
+  const bot = await requireBotAccess(req, res, botId);
+  if (!bot) return;
+
+  // Find the Discord token from the bot's stored env vars
+  let tokenValue: string | undefined;
+  try {
+    const vars = await db.select().from(envVarsTable).where(eq(envVarsTable.botId, botId));
+    const row = vars.find(v => ["DISCORD_TOKEN", "BOT_TOKEN", "TOKEN"].includes(v.key.toUpperCase()));
+    tokenValue = row?.value?.trim();
+  } catch (err) {
+    req.log.warn({ err }, "Failed to read env vars for intent check");
+  }
+
+  if (!tokenValue) {
+    res.json({ ok: false, error: "No se encontró DISCORD_TOKEN en las variables de entorno del bot." });
+    return;
+  }
+
+  try {
+    const response = await fetch("https://discord.com/api/v10/applications/@me", {
+      headers: { Authorization: `Bot ${tokenValue}` },
+    });
+    if (!response.ok) {
+      res.json({ ok: false, error: "Token inválido o sin permisos de acceso." });
+      return;
+    }
+    const data = await response.json() as { id: string; name: string; flags: number; icon: string | null };
+    const flags = data.flags || 0;
+    // Privileged intent flag bits (limited = <100 guilds approved, full = verified/approved for all)
+    const HAS_PRESENCE        = (flags & (4096 | 8192)) !== 0;
+    const HAS_SERVER_MEMBERS  = (flags & (16384 | 32768)) !== 0;
+    const HAS_MESSAGE_CONTENT = (flags & (262144 | 524288)) !== 0;
+    res.json({
+      ok: true,
+      botName: data.name,
+      botId: data.id,
+      avatar: data.icon ? `https://cdn.discordapp.com/app-icons/${data.id}/${data.icon}.png` : null,
+      intents: {
+        presence: HAS_PRESENCE,
+        serverMembers: HAS_SERVER_MEMBERS,
+        messageContent: HAS_MESSAGE_CONTENT,
+      },
+    });
+  } catch (err) {
+    req.log.warn({ err }, "Failed to check Discord intents");
+    res.status(500).json({ ok: false, error: "No se pudo conectar con Discord." });
+  }
+});
+
 router.post("/bots/verify-token", requireAuth, async (req, res): Promise<void> => {
   const { token } = req.body;
   if (!token) { res.status(400).json({ error: "Token is required" }); return; }
