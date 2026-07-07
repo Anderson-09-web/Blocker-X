@@ -6,7 +6,8 @@ const accountId = process.env.CF_R2_ACCOUNT_ID!;
 const accessKeyId = process.env.CF_R2_ACCESS_KEY_ID!;
 const secretAccessKey = process.env.CF_R2_SECRET_ACCESS_KEY!;
 const bucketName = process.env.CF_R2_BUCKET_NAME!;
-const endpoint = process.env.CF_R2_ENDPOINT!;
+// Derive endpoint from account ID; falls back to explicit CF_R2_ENDPOINT if set
+const endpoint = process.env.CF_R2_ENDPOINT ?? `https://${accountId}.r2.cloudflarestorage.com`;
 
 export const r2Client = new S3Client({
   region: "auto",

@@ -41,7 +41,7 @@ app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) { callback(null, true); return; }
-      const allowed = allowedOrigins.some((o) => origin.startsWith(o));
+      const allowed = allowedOrigins.some((o) => origin === o);
       callback(null, allowed || process.env.NODE_ENV === "development");
     },
     credentials: true,

@@ -1,91 +1,58 @@
 # Blocker X
 
-A professional Discord bot hosting platform where developers upload, edit, deploy, and manage Python and JavaScript bots through a dashboard.
+A Discord bot hosting platform where developers can manage, deploy, and monitor Python/JS bots via a web dashboard. Features real-time logging, environment management, Cloudflare R2-backed file storage, and an AI assistant.
 
-## Run & Operate
+## Architecture
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080, proxied at /api)
-- `BASE_PATH=/ PORT=5000 pnpm --filter @workspace/blockerx run dev` — run the frontend (port 5000, proxied at /)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only, uses NEON_DATABASE_URL)
+**Monorepo** managed with `pnpm` workspaces.
 
-## Required secrets (set in Replit Secrets)
-
-| Secret | Required | Purpose |
+| Package | Path | Purpose |
 |---|---|---|
-| `NEON_DATABASE_URL` | ✅ Always | PostgreSQL connection string (Neon) |
-| `SESSION_SECRET` | ✅ Always | Express session signing key |
-| `DISCORD_CLIENT_ID` | ✅ Login | Discord OAuth2 app ID |
-| `DISCORD_CLIENT_SECRET` | ✅ Login | Discord OAuth2 app secret |
-| `CF_R2_ACCOUNT_ID` | ✅ File storage | Cloudflare R2 account ID |
-| `CF_R2_ACCESS_KEY_ID` | ✅ File storage | R2 access key |
-| `CF_R2_SECRET_ACCESS_KEY` | ✅ File storage | R2 secret key |
-| `CF_R2_BUCKET_NAME` | ✅ File storage | R2 bucket name |
-| `CF_R2_ENDPOINT` | ✅ File storage | R2 S3-compatible endpoint URL |
-| `GROQ_API_KEY` | Optional | AI assistant (llama3-70b); feature disabled without it |
+| `@workspace/blockerx` | `artifacts/blockerx` | React 19 + Vite 7 frontend (port 5000) |
+| `@workspace/api-server` | `artifacts/api-server` | Node/Express 5 API (port 8080) |
+| `@workspace/db` | `lib/db` | Drizzle ORM schema + migrations (Neon PostgreSQL) |
+| `@workspace/api-spec` | `lib/api-spec` | OpenAPI spec driving codegen |
+| `@workspace/api-zod` | `lib/api-zod` | Generated Zod schemas from OpenAPI |
+| `@workspace/mockup-sandbox` | `artifacts/mockup-sandbox` | Vite preview server for canvas mockups |
 
-## Stack
+## Running the Project
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- Frontend: React + Vite + Tailwind v4 + shadcn/ui + wouter routing + framer-motion
-- API: Express 5 + express-session + connect-pg-simple
-- DB: PostgreSQL (Neon) + Drizzle ORM
-- Storage: Cloudflare R2 via @aws-sdk/client-s3
-- AI: Groq (llama3-70b-8192) via /api/ai/chat
-- Auth: Discord OAuth2 (DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET)
-- Validation: Zod (zod/v4), drizzle-zod
-- API codegen: Orval (from OpenAPI spec in lib/api-spec/openapi.yaml)
-- Build: esbuild (CJS bundle for API server)
+### Workflows
+- **Start application** — Frontend dev server: `BASE_PATH=/ PORT=5000 pnpm --filter @workspace/blockerx run dev`
+- **API Server** — Express API: `cd artifacts/api-server && PORT=8080 NODE_ENV=development pnpm run dev`
 
-## Where things live
+### One-off commands
+```bash
+# Install dependencies
+pnpm install
 
-- `lib/api-spec/openapi.yaml` — source-of-truth API contract
-- `lib/db/src/schema/` — all Drizzle ORM table definitions
-- `lib/db/src/index.ts` — DB connection (uses NEON_DATABASE_URL with SSL)
-- `lib/api-client-react/src/generated/` — Orval-generated hooks (do not edit)
-- `artifacts/api-server/src/routes/` — all Express route handlers
-- `artifacts/api-server/src/lib/` — r2.ts, session.ts, auth-middleware.ts, notifications.ts
-- `artifacts/blockerx/src/pages/` — all frontend page components
-- `artifacts/blockerx/src/lib/auth-context.tsx` — auth state + redirect logic
-- `artifacts/blockerx/src/components/layout/` — sidebar + dashboard layout
+# Push DB schema to Neon
+cd lib/db && pnpm run push
 
-## Architecture decisions
+# Regenerate API codegen (after editing lib/api-spec/openapi.yaml)
+pnpm --filter @workspace/api-zod run generate
+```
 
-- **DB uses NEON_DATABASE_URL** (not DATABASE_URL) — always use this env var; drizzle.config.ts and lib/db/src/index.ts both check NEON_DATABASE_URL first.
-- **R2 storage is file-only** — file paths are never stored in DB. Each bot gets `users/{discordId}/bots/{botId}` as an R2 prefix.
-- **Owner Discord ID 1237892993013387307** skips invite requirement and gets isAdmin=true automatically on first login.
-- **Sessions stored in PostgreSQL** via connect-pg-simple (creates `sessions` table automatically).
-- **Dark theme only** — `.dark` class applied to `<html>` on mount in main.tsx; no theme toggle.
-- **API codegen collision fix** — lib/api-zod/src/index.ts uses explicit named exports to exclude colliding Params types (GetBotLogsParams, ListFilesParams, etc.).
+## Required Secrets
 
-## Product
+| Secret | Purpose |
+|---|---|
+| `SESSION_SECRET` | Express session signing |
+| `NEON_DATABASE_URL` | Neon PostgreSQL connection string |
+| `DISCORD_CLIENT_ID` | Discord OAuth2 app ID |
+| `DISCORD_CLIENT_SECRET` | Discord OAuth2 app secret |
+| `CF_R2_ACCOUNT_ID` | Cloudflare R2 account |
+| `CF_R2_ACCESS_KEY_ID` | R2 access key |
+| `CF_R2_SECRET_ACCESS_KEY` | R2 secret key |
+| `CF_R2_BUCKET_NAME` | R2 bucket name |
+| `GROQ_API_KEY` | Groq LLM API key (optional — AI features) |
 
-- Discord OAuth2 login with invitation code gate
-- Bot management: create, start, stop, restart, deploy Python/JS bots
-- File manager backed by Cloudflare R2 (per-bot prefix in R2)
-- Environment variable manager per bot
-- Real-time bot logs with auto-refresh
-- AI assistant (Groq llama3-70b) for bot development help (10 req free, unlimited premium)
-- Deployment history and status tracking
-- Notification system (per-user + admin broadcast)
-- Admin panel: user management, invite codes, platform stats, audit logs
+## Key Implementation Notes
 
-## User preferences
+- **Discord OAuth redirect URI** is built dynamically from `REPLIT_DOMAINS`/`REPLIT_DEV_DOMAIN` env vars in `artifacts/api-server/src/lib/auth.ts`
+- **Bot files** are stored in R2 under `users/{discordId}/bots/{botId}/`; file paths are not tracked in the DB
+- **Dark mode** is forced via `document.documentElement.classList.add("dark")` in `artifacts/blockerx/src/main.tsx`
+- **Owner Discord ID** `1237892993013387307` is hardcoded to bypass invite gates in `artifacts/api-server/src/lib/auth-middleware.ts`
+- **API codegen**: `lib/api-zod/src/index.ts` uses explicit named exports to avoid Params type collisions
 
-- Owner Discord ID: 1237892993013387307 (gets admin + invite bypass automatically)
-- Dark theme only — no toggle
-- No emojis in the UI
-
-## Gotchas
-
-- **DB push**: Run `NEON_DATABASE_URL=$NEON_DATABASE_URL pnpm --filter @workspace/db run push` — the env var must be set explicitly.
-- **Tailwind v4**: Cannot use `@apply dark` in CSS — apply the `.dark` class via JS (main.tsx does `document.documentElement.classList.add("dark")`).
-- **Discord OAuth redirect URI**: Dynamically built from REPLIT_DOMAINS or REPLIT_DEV_DOMAIN env vars in auth.ts.
-- **API base path**: The API server handles its full path prefix (`/api/...`) — no path rewriting by the proxy.
-- **Orval output**: Do not modify generated files in `lib/api-client-react/src/generated/`. Run codegen after OpenAPI changes.
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+## User Preferences
