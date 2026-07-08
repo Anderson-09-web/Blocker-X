@@ -1,5 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "wouter";
+import { motion } from "framer-motion";
 import { useAuth } from "@/lib/auth-context";
 import { useLogout, getGetMeQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -21,6 +22,7 @@ import {
   MessageSquare,
   HeartHandshake
 } from "lucide-react";
+import bxLogo from "@/assets/bx-logo.jpg";
 
 interface NavItem {
   title: string;
@@ -55,7 +57,6 @@ const adminNav: NavItem[] = [
   { title: "Broadcast", href: "/admin/broadcast", icon: Activity },
 ];
 
-// NavGroup defined outside SidebarContent so React never remounts it on re-renders
 function NavGroup({
   title,
   items,
@@ -72,23 +73,35 @@ function NavGroup({
       <h4 className="px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
         {title}
       </h4>
-      <div className="space-y-1">
-        {items.map((item) => {
+      <div className="space-y-0.5">
+        {items.map((item, i) => {
           const isActive = location === item.href || location.startsWith(`${item.href}/`);
           return (
-            <Link
+            <motion.div
               key={item.href}
-              href={item.href}
-              onClick={onNavigate}
-              className={`flex items-center gap-3 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                isActive
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-              }`}
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.04, duration: 0.2 }}
             >
-              <item.icon className="w-4 h-4 shrink-0" />
-              {item.title}
-            </Link>
+              <Link
+                href={item.href}
+                onClick={onNavigate}
+                className={`flex items-center gap-3 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-150 ${
+                  isActive
+                    ? "bg-primary/15 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.25)]"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent/60"
+                }`}
+              >
+                <item.icon className={`w-4 h-4 shrink-0 ${isActive ? "text-primary" : ""}`} />
+                {item.title}
+                {isActive && (
+                  <motion.div
+                    layoutId="sidebar-active-dot"
+                    className="ml-auto w-1.5 h-1.5 rounded-full bg-primary"
+                  />
+                )}
+              </Link>
+            </motion.div>
           );
         })}
       </div>
@@ -122,25 +135,38 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="h-16 flex items-center px-6 border-b border-border shrink-0">
-        <div className="w-6 h-6 bg-primary rounded-md rotate-45 mr-4 shrink-0" />
-        <span className="font-bold text-lg tracking-tight">Blocker X</span>
+      {/* Logo */}
+      <div className="h-16 flex items-center px-4 border-b border-border shrink-0">
+        <motion.div
+          whileHover={{ scale: 1.05 }}
+          transition={{ type: "spring", stiffness: 400, damping: 20 }}
+          className="flex items-center gap-3"
+        >
+          <img
+            src={bxLogo}
+            alt="BX"
+            className="w-9 h-9 object-contain rounded-lg"
+          />
+          <div className="flex flex-col leading-none">
+            <span className="font-bold text-base tracking-tight text-foreground">BX</span>
+            <span className="text-[10px] font-medium text-muted-foreground tracking-widest uppercase">Platform</span>
+          </div>
+        </motion.div>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-6 px-3">
+      <div className="flex-1 overflow-y-auto py-5 px-3">
         <NavGroup title="Main" items={mainNav} location={location} onNavigate={onNavigate} />
         <NavGroup title="Tools" items={toolsNav} location={location} onNavigate={onNavigate} />
         <NavGroup title="Account" items={accountNav} location={location} onNavigate={onNavigate} />
         {user?.isAdmin && <NavGroup title="Admin" items={adminNav} location={location} onNavigate={onNavigate} />}
 
-        {/* Support server */}
         <div className="mb-6">
           <a
             href="https://discord.gg/cf2pNF7gh8"
             target="_blank"
             rel="noopener noreferrer"
             onClick={onNavigate}
-            className="flex items-center gap-3 px-4 py-2 text-sm font-medium rounded-md transition-colors text-muted-foreground hover:text-foreground hover:bg-accent/50"
+            className="flex items-center gap-3 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-150 text-muted-foreground hover:text-foreground hover:bg-accent/60"
           >
             <HeartHandshake className="w-4 h-4 shrink-0 text-primary" />
             Support Server
@@ -148,9 +174,10 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
         </div>
       </div>
 
+      {/* User footer */}
       <div className="p-4 border-t border-border shrink-0">
-        <div className="flex items-center gap-3 mb-4 px-2">
-          <div className="w-8 h-8 rounded-full bg-muted overflow-hidden shrink-0">
+        <div className="flex items-center gap-3 mb-3 px-2">
+          <div className="w-8 h-8 rounded-full bg-muted overflow-hidden shrink-0 ring-2 ring-primary/20">
             {user?.avatar ? (
               <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" />
             ) : (
@@ -160,14 +187,14 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{user?.username}</p>
-            <p className="text-xs text-muted-foreground">{user?.plan === "premium" ? "Blocker Plus X" : "Free Plan"}</p>
+            <p className="text-sm font-semibold truncate">{user?.username}</p>
+            <p className="text-xs text-muted-foreground">{user?.plan === "premium" ? "BX Plus" : "Free Plan"}</p>
           </div>
         </div>
         <button
           onClick={handleLogout}
           disabled={logoutMutation.isPending}
-          className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+          className="flex w-full items-center gap-3 px-4 py-2 text-sm font-medium rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all duration-150 disabled:opacity-50"
         >
           <LogOut className="w-4 h-4" />
           {logoutMutation.isPending ? "Cerrando..." : "Log out"}
@@ -179,7 +206,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
 
 export default function Sidebar() {
   return (
-    <div className="w-64 border-r border-border bg-card h-screen hidden md:flex flex-col">
+    <div className="w-64 border-r border-border bg-sidebar h-screen hidden md:flex flex-col">
       <SidebarContent />
     </div>
   );

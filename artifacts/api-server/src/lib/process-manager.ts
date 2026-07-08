@@ -320,25 +320,45 @@ function scheduleFreeRestarts(botId: string, bot: { id: string; language: string
   const bp = processes.get(botId);
   if (!bp) return;
 
-  const randomHours = () => Math.floor(Math.random() * 8 + 4);
-  const delay1 = randomHours() * 60 * 60 * 1000;
-  const delay2 = delay1 + randomHours() * 60 * 60 * 1000;
+  // Free plan: bot auto-stops after 48 hours. User must restart it manually.
+  const STOP_DELAY = 48 * 60 * 60 * 1000;       // 48 h
+  const WARN_BEFORE = 30 * 60 * 1000;            // warn 30 min before
+  const warnDelay = STOP_DELAY - WARN_BEFORE;
 
-  const t1 = setTimeout(async () => {
+  const tWarn = setTimeout(async () => {
     const current = processes.get(botId);
     if (!current || current.isStopping) return;
-    await addLog(botId, "warn", "[System] Free plan scheduled restart #1");
-    await restartBot(bot, userId);
-  }, delay1);
+    await addLog(botId, "warn", "[System] ⚠️ Free plan: tu bot se apagará automáticamente en 30 minutos. Vuelve a encenderlo cuando quieras.");
+  }, warnDelay);
 
-  const t2 = setTimeout(async () => {
+  const tStop = setTimeout(async () => {
     const current = processes.get(botId);
     if (!current || current.isStopping) return;
-    await addLog(botId, "warn", "[System] Free plan scheduled restart #2");
-    await restartBot(bot, userId);
-  }, delay2);
+    await addLog(botId, "warn", "[System] 🔴 Free plan: el bot ha sido detenido automáticamente tras 48 horas. Inícialo manualmente desde el dashboard.");
+    await stopBot(botId);
+    // Notify user
+    try {
+      const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+      if (freshUser?.discordId) {
+        const [freshBot] = await db.select().from(botsTable).where(eq(botsTable.id, botId));
+        const botName = freshBot?.name || "Tu bot";
+        await sendDiscordDm(freshUser.discordId, {
+          title: "Bot detenido — Plan Free",
+          message: `**${botName}** se ha apagado automáticamente tras 48 h. Reinícialo desde tu dashboard de BX.`,
+          type: "warning",
+          throttleKey: `${botId}:free-timeout`,
+        });
+        await createNotification({
+          userId,
+          title: `${botName} detenido (plan free)`,
+          message: "Tu bot se ha apagado automáticamente tras 48 horas de actividad. Inícialo de nuevo cuando quieras.",
+          type: "warning",
+        });
+      }
+    } catch (_) {}
+  }, STOP_DELAY);
 
-  bp.planTimers = [t1, t2];
+  bp.planTimers = [tWarn, tStop];
 }
 
 async function spawnBotProcess(

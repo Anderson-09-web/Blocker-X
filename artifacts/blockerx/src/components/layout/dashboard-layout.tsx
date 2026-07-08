@@ -1,12 +1,12 @@
 import React, { useState } from "react";
 import Sidebar, { SidebarContent } from "./sidebar";
+import AnnouncementBanner from "@/components/AnnouncementBanner";
 import { motion } from "framer-motion";
 import { Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import bxLogo from "@/assets/bx-logo.jpg";
 
-/** Benign Radix portal-cleanup race (React 18 flushSync + concurrent mode).
- *  React captures these internally before the window error listener can,
- *  so we must check them here too and silently discard them. */
+/** Benign Radix portal-cleanup race (React 18 flushSync + concurrent mode). */
 function isDomCleanupError(err: unknown): boolean {
   const msg = (err instanceof Error ? err.message : String(err)) ?? "";
   return (
@@ -27,7 +27,6 @@ class PageErrorBoundary extends React.Component<
     this.state = { hasError: false, error: "" };
   }
   static getDerivedStateFromError(err: Error) {
-    // DOM cleanup errors from Radix portals are harmless — swallow them.
     if (isDomCleanupError(err)) return { hasError: false, error: "" };
     return { hasError: true, error: err?.message || "Unknown error" };
   }
@@ -38,7 +37,7 @@ class PageErrorBoundary extends React.Component<
           <p className="text-destructive font-semibold">Algo salió mal</p>
           <p className="text-sm text-muted-foreground max-w-sm text-center">{this.state.error}</p>
           <button
-            className="text-xs bg-primary text-primary-foreground px-4 py-2 rounded-md"
+            className="text-xs bg-primary text-primary-foreground px-4 py-2 rounded-lg"
             onClick={() => this.setState({ hasError: false, error: "" })}
           >Reintentar</button>
         </div>
@@ -56,32 +55,36 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <Sidebar />
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <header className="h-14 md:hidden flex items-center px-4 border-b border-border bg-card shrink-0 gap-3">
+        {/* Mobile header */}
+        <header className="h-14 md:hidden flex items-center px-4 border-b border-border bg-sidebar shrink-0 gap-3">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
-              <button className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors">
+              <button className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors">
                 <Menu className="w-5 h-5" />
               </button>
             </SheetTrigger>
             <SheetContent
               side="left"
-              className="p-0 w-64 bg-card border-border"
+              className="p-0 w-64 bg-sidebar border-border"
               onCloseAutoFocus={(e) => e.preventDefault()}
             >
               <SidebarContent onNavigate={() => setTimeout(() => setMobileOpen(false), 50)} />
             </SheetContent>
           </Sheet>
           <div className="flex items-center gap-2">
-            <div className="w-5 h-5 bg-primary rounded-sm rotate-45 shrink-0" />
-            <span className="font-bold tracking-tight">Blocker X</span>
+            <img src={bxLogo} alt="BX" className="w-7 h-7 object-contain rounded-md" />
+            <span className="font-bold tracking-tight text-foreground">BX</span>
           </div>
         </header>
 
+        {/* Global announcement banner */}
+        <AnnouncementBanner />
+
         <main className="flex-1 overflow-y-auto overflow-x-hidden relative">
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
+            transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
             className="p-4 md:p-8 max-w-7xl mx-auto"
           >
             <PageErrorBoundary>
