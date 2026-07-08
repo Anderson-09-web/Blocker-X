@@ -3,11 +3,11 @@ import { useAuth } from "@/lib/auth-context";
 import { useRedeemInviteCode } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { motion } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
-import bxLogo from "@/assets/bx-logo.jpg";
+import bxLogo from "@/assets/bx-logo.png";
+import { ArrowRight, Lock } from "lucide-react";
 
 export default function InvitePage() {
   const { user } = useAuth();
@@ -19,13 +19,9 @@ export default function InvitePage() {
   const handleRedeem = (e: React.FormEvent) => {
     e.preventDefault();
     if (!code) return;
-    
     redeemMutation.mutate({ data: { code } }, {
       onSuccess: () => {
-        toast({
-          title: "Access Granted",
-          description: "Welcome to BX.",
-        });
+        toast({ title: "Access Granted", description: "Welcome to BX." });
         window.location.href = "/dashboard";
       },
       onError: (err: any) => {
@@ -40,68 +36,125 @@ export default function InvitePage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-background relative overflow-hidden">
-      {/* Ambient glow */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] rounded-full bg-primary/8 blur-[120px]" />
-      </div>
+      {/* Animated grid */}
+      <div className="absolute inset-0 bx-grid-bg opacity-60" />
 
+      {/* Big ambient glow center */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: "radial-gradient(ellipse 60% 50% at 50% 50%, rgba(0,213,255,0.06) 0%, transparent 70%)",
+          animation: "bx-glow-pulse 6s ease-in-out infinite",
+        }}
+      />
+
+      {/* Corner glows */}
+      <div className="absolute top-0 left-0 w-80 h-80 rounded-full pointer-events-none"
+        style={{ background: "radial-gradient(circle, rgba(0,213,255,0.04) 0%, transparent 70%)" }} />
+      <div className="absolute bottom-0 right-0 w-80 h-80 rounded-full pointer-events-none"
+        style={{ background: "radial-gradient(circle, rgba(0,213,255,0.03) 0%, transparent 70%)" }} />
+
+      {/* Main card */}
       <motion.div
-        initial={{ opacity: 0, scale: 0.92, y: 20 }}
+        initial={{ opacity: 0, scale: 0.94, y: 24 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] }}
+        transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+        className="relative z-10 w-full max-w-sm"
       >
-        <Card className="w-full max-w-md border-primary/20 bg-card/60 backdrop-blur-xl shadow-2xl shadow-primary/5">
-          <CardHeader className="text-center pb-6">
+        {/* Card border glow */}
+        <div className="absolute -inset-px rounded-xl pointer-events-none"
+          style={{ background: "linear-gradient(135deg, rgba(0,213,255,0.15) 0%, transparent 50%, rgba(0,213,255,0.05) 100%)" }} />
+
+        <div className="relative rounded-xl border border-border/60 bg-card/70 backdrop-blur-xl overflow-hidden">
+          {/* Scanline at top */}
+          <div className="absolute top-0 left-0 right-0 h-px"
+            style={{ background: "linear-gradient(90deg, transparent, rgba(0,213,255,0.5), transparent)" }} />
+
+          <div className="p-8">
+            {/* Logo */}
             <motion.div
-              initial={{ scale: 0.7, opacity: 0 }}
+              initial={{ scale: 0.6, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              transition={{ delay: 0.15, duration: 0.4, type: "spring", stiffness: 200 }}
-              className="mx-auto mb-5"
+              transition={{ delay: 0.1, duration: 0.5, type: "spring", stiffness: 220, damping: 18 }}
+              className="flex justify-center mb-6"
             >
-              <img
-                src={bxLogo}
-                alt="BX"
-                className="w-20 h-20 object-contain rounded-2xl shadow-lg shadow-primary/20 mx-auto"
-              />
+              <div className="relative">
+                <img
+                  src={bxLogo}
+                  alt="BX"
+                  className="w-20 h-20 object-contain bx-logo-glow"
+                  style={{ imageRendering: "crisp-edges" }}
+                />
+                {/* Cyan ring */}
+                <motion.div
+                  animate={{ opacity: [0.3, 0.7, 0.3] }}
+                  transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                  className="absolute -inset-2 rounded-xl border border-primary/20 pointer-events-none"
+                />
+              </div>
             </motion.div>
+
+            {/* Text */}
             <motion.div
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.25, duration: 0.35 }}
+              transition={{ delay: 0.2, duration: 0.4 }}
+              className="text-center mb-8"
             >
-              <CardTitle className="text-3xl font-bold tracking-tight">Private Beta</CardTitle>
-              <CardDescription className="text-base mt-2 text-muted-foreground">
-                BX is currently invite-only. Enter your code to access the platform.
-              </CardDescription>
+              <h1 className="text-2xl font-bold tracking-tight text-foreground mb-2">
+                Private Beta
+              </h1>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                BX is currently invite-only.
+                <br />Enter your code to access the platform.
+              </p>
             </motion.div>
-          </CardHeader>
-          <CardContent>
+
+            {/* Form */}
             <motion.form
               onSubmit={handleRedeem}
-              className="space-y-4"
-              initial={{ opacity: 0, y: 8 }}
+              className="space-y-3"
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.35, duration: 0.3 }}
+              transition={{ delay: 0.3, duration: 0.35 }}
             >
-              <div className="space-y-2">
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
                 <Input
                   placeholder="ENTER INVITE CODE"
                   value={code}
                   onChange={(e) => setCode(e.target.value.toUpperCase())}
-                  className="h-12 text-center text-lg tracking-widest uppercase font-mono bg-background/50 border-border/60 focus:border-primary/60"
+                  className="pl-9 h-12 text-center text-sm tracking-[0.2em] uppercase font-mono bg-background/40 border-border/60 focus:border-primary/50 focus:ring-primary/20"
                   maxLength={12}
                 />
               </div>
-              <Button 
-                type="submit" 
-                className="w-full h-12 text-base font-semibold tracking-wide transition-all duration-200 shadow-lg shadow-primary/20 hover:shadow-primary/35"
+              <Button
+                type="submit"
+                className="w-full h-12 font-semibold tracking-wide gap-2 text-sm"
                 disabled={!code || redeemMutation.isPending}
               >
-                {redeemMutation.isPending ? "Verifying..." : "Enter Platform"}
+                {redeemMutation.isPending ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                    Verifying...
+                  </span>
+                ) : (
+                  <>
+                    Enter Platform
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </Button>
             </motion.form>
-          </CardContent>
-        </Card>
+          </div>
+
+          {/* Footer bar */}
+          <div className="px-8 py-3 border-t border-border/40 bg-background/20">
+            <p className="text-center text-[10px] text-muted-foreground/40 tracking-widest uppercase">
+              BX Platform · Invite Only
+            </p>
+          </div>
+        </div>
       </motion.div>
     </div>
   );

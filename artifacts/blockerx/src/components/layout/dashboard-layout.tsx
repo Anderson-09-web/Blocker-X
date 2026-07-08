@@ -1,12 +1,12 @@
 import React, { useState } from "react";
 import Sidebar, { SidebarContent } from "./sidebar";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import bxLogo from "@/assets/bx-logo.jpg";
+import bxLogo from "@/assets/bx-logo.png";
+import { useLocation } from "wouter";
 
-/** Benign Radix portal-cleanup race (React 18 flushSync + concurrent mode). */
 function isDomCleanupError(err: unknown): boolean {
   const msg = (err instanceof Error ? err.message : String(err)) ?? "";
   return (
@@ -49,48 +49,65 @@ class PageErrorBoundary extends React.Component<
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [location] = useLocation();
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
       <Sidebar />
 
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0 relative">
+        {/* Ambient grid background */}
+        <div className="absolute inset-0 bx-grid-bg pointer-events-none z-0" />
+        {/* Top radial glow */}
+        <div
+          className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[300px] pointer-events-none z-0"
+          style={{
+            background: "radial-gradient(ellipse 70% 60% at 50% 0%, rgba(0,213,255,0.04) 0%, transparent 70%)",
+          }}
+        />
+
         {/* Mobile header */}
-        <header className="h-14 md:hidden flex items-center px-4 border-b border-border bg-sidebar shrink-0 gap-3">
+        <header className="relative z-10 h-14 md:hidden flex items-center px-4 border-b border-border/60 bg-sidebar/80 backdrop-blur-md shrink-0 gap-3">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
-              <button className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors">
+              <button className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors">
                 <Menu className="w-5 h-5" />
               </button>
             </SheetTrigger>
             <SheetContent
               side="left"
-              className="p-0 w-64 bg-sidebar border-border"
+              className="p-0 w-60 bg-sidebar border-border/60"
               onCloseAutoFocus={(e) => e.preventDefault()}
             >
               <SidebarContent onNavigate={() => setTimeout(() => setMobileOpen(false), 50)} />
             </SheetContent>
           </Sheet>
           <div className="flex items-center gap-2">
-            <img src={bxLogo} alt="BX" className="w-7 h-7 object-contain rounded-md" />
-            <span className="font-bold tracking-tight text-foreground">BX</span>
+            <img src={bxLogo} alt="BX" className="w-7 h-7 object-contain bx-logo-glow" />
+            <span className="font-bold tracking-[0.08em] text-sm text-foreground">BX</span>
           </div>
         </header>
 
         {/* Global announcement banner */}
-        <AnnouncementBanner />
+        <div className="relative z-10">
+          <AnnouncementBanner />
+        </div>
 
-        <main className="flex-1 overflow-y-auto overflow-x-hidden relative">
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
-            className="p-4 md:p-8 max-w-7xl mx-auto"
-          >
-            <PageErrorBoundary>
-              {children}
-            </PageErrorBoundary>
-          </motion.div>
+        <main className="flex-1 overflow-y-auto overflow-x-hidden relative z-10">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={location}
+              initial={{ opacity: 0, y: 16, scale: 0.995 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.998 }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              className="p-4 md:p-8 max-w-7xl mx-auto min-h-full"
+            >
+              <PageErrorBoundary>
+                {children}
+              </PageErrorBoundary>
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
     </div>
