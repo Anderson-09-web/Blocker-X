@@ -14,6 +14,8 @@ import statsRouter from "./stats";
 import adminRouter from "./admin";
 import botInternalRouter from "./bot-internal";
 import bannerRouter from "./banner";
+import webhooksRouter from "./webhooks";
+import docsRouter from "./docs";
 
 const router: IRouter = Router();
 
@@ -31,6 +33,8 @@ router.use(notificationsRouter);
 router.use(statsRouter);
 router.use(adminRouter);
 router.use(bannerRouter);
+router.use(webhooksRouter);
+router.use(docsRouter);
 router.use(botInternalRouter);
 
 export default router;

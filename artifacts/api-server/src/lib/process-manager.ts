@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
 import { sendDiscordDm, createNotification } from "./notifications";
+import { fireWebhooks } from "./webhooks";
 
 const BOT_WORK_DIR = "/tmp/blockerx-bots";
 
@@ -540,6 +541,7 @@ async function spawnBotProcess(
     }
 
     await db.update(botsTable).set({ status: "running" }).where(eq(botsTable.id, botId));
+    fireWebhooks(userId, botId, "bot_started").catch(() => {});
 
     // Notify user when bot comes online — throttled to avoid spam on scheduled restarts
     try {
@@ -582,6 +584,7 @@ async function spawnBotProcess(
       if (current.isStopping) {
         await db.update(botsTable).set({ status: "stopped" }).where(eq(botsTable.id, botId));
         await addLog(botId, "info", "[System] Bot stopped gracefully.");
+        fireWebhooks(userId, botId, "bot_stopped").catch(() => {});
         return;
       }
 
@@ -589,6 +592,7 @@ async function spawnBotProcess(
       if (code !== 0 && code !== null) {
         await db.update(botsTable).set({ status: "errored" }).where(eq(botsTable.id, botId));
         await addLog(botId, "error", `[System] Bot crashed (exit code ${code}). Stopped. Fix the error and restart manually.`);
+        fireWebhooks(userId, botId, "bot_crashed", { exitCode: code }).catch(() => {});
         try {
           const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
           const [freshBot] = await db.select().from(botsTable).where(eq(botsTable.id, botId));
@@ -615,6 +619,7 @@ async function spawnBotProcess(
       if (code === 0) {
         await db.update(botsTable).set({ status: "stopped" }).where(eq(botsTable.id, botId));
         await addLog(botId, "info", "[System] Bot exited cleanly.");
+        fireWebhooks(userId, botId, "bot_stopped").catch(() => {});
         return;
       }
 
@@ -622,6 +627,7 @@ async function spawnBotProcess(
       const exitInfo = signal ? `signal ${signal}` : `code ${code}`;
       await addLog(botId, "warn", `[System] Bot terminated by ${exitInfo}. Restarting in 5s...`);
       await db.update(botsTable).set({ status: "starting" }).where(eq(botsTable.id, botId));
+      fireWebhooks(userId, botId, "bot_restarted", { reason: exitInfo }).catch(() => {});
 
       setTimeout(async () => {
         const [freshBot] = await db.select().from(botsTable).where(eq(botsTable.id, botId));

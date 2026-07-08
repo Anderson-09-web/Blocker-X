@@ -20,7 +20,9 @@ import {
   FileText,
   Activity,
   MessageSquare,
-  HeartHandshake
+  HeartHandshake,
+  Webhook,
+  BookOpen,
 } from "lucide-react";
 import bxLogo from "@/assets/bx-logo.jpg";
 
@@ -39,6 +41,7 @@ const mainNav: NavItem[] = [
 
 const toolsNav: NavItem[] = [
   { title: "AI Assistant", href: "/ai", icon: MessageSquare },
+  { title: "Webhooks", href: "/webhooks", icon: Webhook },
 ];
 
 const accountNav: NavItem[] = [
@@ -55,6 +58,7 @@ const adminNav: NavItem[] = [
   { title: "All Deployments", href: "/admin/deployments", icon: Rocket },
   { title: "Audit Logs", href: "/admin/logs", icon: FileText },
   { title: "Broadcast", href: "/admin/broadcast", icon: Activity },
+  { title: "Documentación", href: "/admin/docs", icon: BookOpen },
 ];
 
 function NavGroup({

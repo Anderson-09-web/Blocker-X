@@ -23,6 +23,8 @@ import AdminInvitesPage from "@/pages/admin-invites";
 import AdminDeploymentsPage from "@/pages/admin-deployments";
 import AdminLogsPage from "@/pages/admin-logs";
 import AdminBroadcastPage from "@/pages/admin-broadcast";
+import AdminDocsPage from "@/pages/admin-docs";
+import WebhooksPage from "@/pages/webhooks";
 import NotFound from "@/pages/not-found";
 import PrivacyPage from "@/pages/privacy";
 import UsagePoliciesPage from "@/pages/usage-policies";
@@ -80,7 +82,9 @@ function DashboardRoutes() {
         <Route path="/admin/deployments"><ProtectedRoute component={AdminDeploymentsPage} adminOnly /></Route>
         <Route path="/admin/logs"><ProtectedRoute component={AdminLogsPage} adminOnly /></Route>
         <Route path="/admin/broadcast"><ProtectedRoute component={AdminBroadcastPage} adminOnly /></Route>
+        <Route path="/admin/docs"><ProtectedRoute component={AdminDocsPage} adminOnly /></Route>
         <Route path="/admin"><ProtectedRoute component={AdminPage} adminOnly /></Route>
+        <Route path="/webhooks"><ProtectedRoute component={WebhooksPage} /></Route>
         <Route><NotFound /></Route>
       </Switch>
     </DashboardLayout>

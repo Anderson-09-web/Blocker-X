@@ -4,6 +4,7 @@ import { eq, and, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, requireInvite } from "../lib/auth-middleware";
 import { notifyUser } from "../lib/notifications";
+import { fireWebhooks } from "../lib/webhooks";
 import { startBot, stopBot } from "../lib/process-manager";
 
 const router = Router();
@@ -63,6 +64,7 @@ router.post("/bots/:botId/deploy", requireAuth, requireInvite, async (req, res):
 
       logLines.push(`[Deploy] Bot process started successfully.`);
       logLines.push(`[Deploy] Deployment complete.`);
+      fireWebhooks(user.id, botId, "bot_deployed", { deploymentId: deployId }).catch(() => {});
 
       await db.update(deploymentsTable).set({
         status: "success",
