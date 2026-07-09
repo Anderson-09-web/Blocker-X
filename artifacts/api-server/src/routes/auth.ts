@@ -17,8 +17,6 @@ function getRedirectUri(req: any): string {
   if (domains) return `https://${domains}/api/auth/discord/callback`;
   const devDomain = process.env.REPLIT_DEV_DOMAIN;
   if (devDomain) return `https://${devDomain}/api/auth/discord/callback`;
-  const renderApiUrl = process.env.RENDER_API_URL;
-  if (renderApiUrl) return `${renderApiUrl}/api/auth/discord/callback`;
   return `http://localhost:${process.env.PORT || 5000}/api/auth/discord/callback`;
 }
 
@@ -127,7 +125,7 @@ router.get("/auth/discord/callback", async (req, res): Promise<void> => {
 
     req.log.info({ userId: user.id, isAdmin: user.isAdmin }, "User logged in");
 
-    const frontendUrl = process.env.RENDER_APP_URL || process.env.BASE_PATH || "/";
+    const frontendUrl = process.env.BASE_PATH || "/";
     const base = frontendUrl.endsWith("/") ? frontendUrl : `${frontendUrl}/`;
 
     let redirectTarget: string;

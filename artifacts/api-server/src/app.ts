@@ -30,7 +30,6 @@ app.use(
 const allowedOrigins = [
   ...(process.env.REPLIT_DOMAINS?.split(",").map((d) => `https://${d.trim()}`) || []),
   ...(process.env.REPLIT_DEV_DOMAIN ? [`https://${process.env.REPLIT_DEV_DOMAIN}`] : []),
-  ...(process.env.RENDER_APP_URL ? [process.env.RENDER_APP_URL] : []),
   "http://localhost:3000",
   "http://localhost:5173",
   "http://localhost:80",
