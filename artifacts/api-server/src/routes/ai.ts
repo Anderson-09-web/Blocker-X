@@ -247,8 +247,9 @@ router.post("/ai/chat", requireAuth, requireInvite, async (req, res): Promise<vo
   if (!GROQ_API_KEY) { res.status(503).json({ error: "AI service is not configured. Ask the admin to set the GROQ_API_KEY." }); return; }
 
   const usageCount = await getUsageCount(user.id);
-  if (user.plan !== "premium" && usageCount >= FREE_DAILY_LIMIT) {
-    res.status(403).json({ error: `Límite diario alcanzado (${FREE_DAILY_LIMIT} requests/día). Actualiza a Premium para IA ilimitada.` });
+  const planLimit = user.plan === "blockerx" ? null : user.plan === "plus" ? 50 : FREE_DAILY_LIMIT;
+  if (planLimit !== null && usageCount >= planLimit) {
+    res.status(403).json({ error: `Límite alcanzado (${planLimit} requests/mes). Actualiza tu plan para más IA.` });
     return;
   }
 
@@ -272,7 +273,8 @@ ${context ? `Contexto adicional: ${context}` : ""}`;
 
     await db.insert(aiUsageTable).values({ id: randomUUID(), userId: user.id, prompt: message, response: aiResponse, tokensUsed: tokens, language });
 
-    res.json({ response: aiResponse, tokensUsed: tokens, usageCount: usageCount + 1, usageLimit: user.plan === "premium" ? null : FREE_DAILY_LIMIT });
+    const planLimit2 = user.plan === "blockerx" ? null : user.plan === "plus" ? 50 : FREE_DAILY_LIMIT;
+    res.json({ response: aiResponse, tokensUsed: tokens, usageCount: usageCount + 1, usageLimit: planLimit2 });
   } catch (err: any) {
     req.log.error({ err }, "AI chat error");
     res.status(500).json({ error: "No se pudo obtener respuesta de la IA. Intenta de nuevo." });
@@ -289,8 +291,9 @@ router.post("/ai/agent/plan", requireAuth, requireInvite, async (req, res): Prom
   if (!GROQ_API_KEY) { res.status(503).json({ error: "AI service is not configured." }); return; }
 
   const usageCount = await getUsageCount(user.id);
-  if (user.plan !== "premium" && usageCount >= FREE_DAILY_LIMIT) {
-    res.status(403).json({ error: `Límite diario alcanzado (${FREE_DAILY_LIMIT} requests/día). Actualiza a Premium para IA ilimitada.` });
+  const agentPlanLimit = user.plan === "blockerx" ? null : user.plan === "plus" ? 50 : FREE_DAILY_LIMIT;
+  if (agentPlanLimit !== null && usageCount >= agentPlanLimit) {
+    res.status(403).json({ error: `Límite alcanzado (${agentPlanLimit} requests/mes). Actualiza tu plan para más IA.` });
     return;
   }
 
@@ -333,7 +336,7 @@ router.post("/ai/agent/plan", requireAuth, requireInvite, async (req, res): Prom
       explanation,
       actions,
       usageCount: usageCount + 1,
-      usageLimit: user.plan === "premium" ? null : FREE_DAILY_LIMIT,
+      usageLimit: user.plan === "blockerx" ? null : user.plan === "plus" ? 50 : FREE_DAILY_LIMIT,
     });
   } catch (err: any) {
     req.log.error({ err, message: err?.message }, "AI agent/plan error");
@@ -389,7 +392,8 @@ router.post("/ai/agent/apply", requireAuth, requireInvite, async (req, res): Pro
 router.get("/ai/usage", requireAuth, requireInvite, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const count_ = await getUsageCount(user.id);
-  res.json({ count: count_, limit: user.plan === "premium" ? null : FREE_DAILY_LIMIT, plan: user.plan });
+  const usageLimit = user.plan === "blockerx" ? null : user.plan === "plus" ? 50 : FREE_DAILY_LIMIT;
+  res.json({ count: count_, limit: usageLimit, plan: user.plan });
 });
 
 export default router;

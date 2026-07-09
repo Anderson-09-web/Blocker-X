@@ -20,7 +20,7 @@ router.get("/profile", requireAuth, requireInvite, async (req, res): Promise<voi
   } catch {}
 
   const aiUsageCount = Number(aiCountResult?.count || 0);
-  const aiUsageLimit = user.plan === "premium" ? null : 10;
+  const aiUsageLimit = user.plan === "blockerx" ? null : user.plan === "plus" ? 50 : 10;
 
   res.json({
     user: {

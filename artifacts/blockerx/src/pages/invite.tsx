@@ -58,7 +58,7 @@ export default function InvitePage() {
       <motion.div
         initial={{ opacity: 0, scale: 0.94, y: 24 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
         className="relative z-10 w-full max-w-sm"
       >
         {/* Card border glow */}
@@ -75,7 +75,7 @@ export default function InvitePage() {
             <motion.div
               initial={{ scale: 0.6, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              transition={{ delay: 0.1, duration: 0.5, type: "spring", stiffness: 220, damping: 18 }}
+              transition={{ delay: 0.05, duration: 0.25 }}
               className="flex justify-center mb-6"
             >
               <div className="relative">
@@ -88,7 +88,7 @@ export default function InvitePage() {
                 {/* Cyan ring */}
                 <motion.div
                   animate={{ opacity: [0.3, 0.7, 0.3] }}
-                  transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
                   className="absolute -inset-2 rounded-xl border border-primary/20 pointer-events-none"
                 />
               </div>
@@ -98,7 +98,7 @@ export default function InvitePage() {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2, duration: 0.4 }}
+              transition={{ delay: 0.1, duration: 0.2 }}
               className="text-center mb-8"
             >
               <h1 className="text-2xl font-bold tracking-tight text-foreground mb-2">
@@ -116,7 +116,7 @@ export default function InvitePage() {
               className="space-y-3"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3, duration: 0.35 }}
+              transition={{ delay: 0.15, duration: 0.2 }}
             >
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />

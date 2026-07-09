@@ -1,36 +1,93 @@
-import { useState } from "react";
+import { useState, type ElementType } from "react";
 import { useGetProfile } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Check, Crown, Key, Zap, Bot, Brain, Share2, Clock } from "lucide-react";
+import { Check, Crown, Key, Zap, Bot, Brain, Share2, Clock, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
-const FREE_FEATURES = [
-  { icon: Bot, text: "Hasta 2 bots" },
-  { icon: Zap, text: "512 MB de almacenamiento" },
-  { icon: Brain, text: "10 solicitudes IA / mes" },
-  { icon: Clock, text: "Reinicios programados (plan gratuito)" },
+type Plan = "free" | "plus" | "blockerx";
+
+const PLANS: {
+  id: Plan;
+  name: string;
+  price: string;
+  period: string;
+  badge?: string;
+  features: { icon: ElementType; text: string }[];
+  accent: string;
+  cardClass: string;
+  badgeClass: string;
+  activeClass: string;
+}[] = [
+  {
+    id: "free",
+    name: "Free",
+    price: "0€",
+    period: "siempre",
+    features: [
+      { icon: Bot, text: "Hasta 2 bots" },
+      { icon: Zap, text: "512 MB de almacenamiento" },
+      { icon: Brain, text: "10 solicitudes IA / mes" },
+      { icon: Clock, text: "Auto-pausa tras 48 h" },
+      { icon: Share2, text: "Compartir proyectos" },
+    ],
+    accent: "text-muted-foreground",
+    cardClass: "bg-card/60 border-border/40",
+    badgeClass: "bg-muted text-muted-foreground",
+    activeClass: "ring-1 ring-border/60",
+  },
+  {
+    id: "plus",
+    name: "Plus",
+    price: "2.99€",
+    period: "mes",
+    features: [
+      { icon: Bot, text: "Hasta 5 bots" },
+      { icon: Zap, text: "2 GB de almacenamiento" },
+      { icon: Brain, text: "50 solicitudes IA / mes" },
+      { icon: Clock, text: "Sin auto-pausa" },
+      { icon: Share2, text: "Compartir proyectos" },
+    ],
+    accent: "text-blue-400",
+    cardClass: "bg-blue-500/5 border-blue-500/30",
+    badgeClass: "bg-blue-500/10 text-blue-400 border border-blue-500/20",
+    activeClass: "ring-1 ring-blue-400/30",
+  },
+  {
+    id: "blockerx",
+    name: "Blocker X",
+    price: "5.99€",
+    period: "mes",
+    badge: "Recomendado",
+    features: [
+      { icon: Bot, text: "Bots ilimitados" },
+      { icon: Zap, text: "5 GB de almacenamiento" },
+      { icon: Brain, text: "IA sin límites" },
+      { icon: Clock, text: "Sin auto-pausa" },
+      { icon: Share2, text: "Compartir proyectos" },
+      { icon: Shield, text: "Soporte prioritario" },
+      { icon: Crown, text: "Acceso a novedades beta" },
+    ],
+    accent: "text-yellow-400",
+    cardClass: "bg-primary/5 border-primary/40",
+    badgeClass: "bg-yellow-400/10 text-yellow-400 border border-yellow-400/20",
+    activeClass: "ring-1 ring-yellow-400/30",
+  },
 ];
 
-const PREMIUM_FEATURES = [
-  { icon: Bot, text: "Bots ilimitados" },
-  { icon: Zap, text: "5 GB de almacenamiento" },
-  { icon: Brain, text: "IA sin límites" },
-  { icon: Share2, text: "Compartir proyectos con colaboradores" },
-  { icon: Clock, text: "Sin reinicios forzados" },
-  { icon: Crown, text: "Soporte prioritario" },
-];
-
-const PLAN_DISPLAY = "Blocker Plus X";
+function planLabel(plan: Plan) {
+  const map: Record<Plan, string> = { free: "Free", plus: "Plus", blockerx: "Blocker X" };
+  return map[plan] ?? plan;
+}
 
 export default function BillingPage() {
   const { data: profile, refetch } = useGetProfile();
   const user = (profile as any)?.user;
   const { toast } = useToast();
   const qc = useQueryClient();
-  const currentPlan: "free" | "premium" = user?.plan || "free";
+  const currentPlan: Plan = (user?.plan as Plan) || "free";
 
   const [keyInput, setKeyInput] = useState("");
   const [isRedeeming, setIsRedeeming] = useState(false);
@@ -50,7 +107,7 @@ export default function BillingPage() {
         toast({ title: "Clave inválida", description: data.error, variant: "destructive" });
       } else {
         toast({
-          title: data.grantsPremium ? `🎉 ¡${PLAN_DISPLAY} activado!` : "Clave canjeada",
+          title: data.grantsPremium ? "🎉 ¡Plan activado!" : "Clave canjeada",
           description: data.message,
         });
         setKeyInput("");
@@ -72,71 +129,70 @@ export default function BillingPage() {
       </div>
 
       {/* Current plan banner */}
-      <div className={`flex items-center gap-3 px-5 py-4 rounded-xl border ${currentPlan === "premium" ? "bg-yellow-400/5 border-yellow-400/20" : "bg-card/60 border-border/40"}`}>
-        <Crown className={`w-5 h-5 shrink-0 ${currentPlan === "premium" ? "text-yellow-400" : "text-muted-foreground"}`} />
-        <div>
-          <p className="font-semibold text-sm">
-            {currentPlan === "premium" ? `Plan ${PLAN_DISPLAY} activo` : "Plan Free"}
-          </p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {currentPlan === "premium"
-              ? "Tienes acceso completo a todas las funciones de Blocker X."
-              : `Canjea una clave ${PLAN_DISPLAY} para desbloquear todas las funciones.`}
-          </p>
-        </div>
-      </div>
-
-      {/* Plans side by side */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl">
-        {/* Free */}
-        <Card className={`bg-card/60 border-border/40 ${currentPlan === "free" ? "ring-1 ring-border/60" : ""}`}>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center justify-between">
-              Free
-              {currentPlan === "free" && (
-                <span className="text-xs font-normal bg-muted px-2 py-0.5 rounded-full text-muted-foreground">Plan actual</span>
-              )}
-            </CardTitle>
-            <p className="text-3xl font-bold">$0 <span className="text-sm font-normal text-muted-foreground">/ siempre</span></p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <ul className="space-y-2">
-              {FREE_FEATURES.map(({ icon: Icon, text }) => (
-                <li key={text} className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Icon className="w-4 h-4 shrink-0 text-muted-foreground/60" />
-                  {text}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-
-        {/* Premium */}
-        <Card className={`relative border-primary/40 bg-primary/5 ${currentPlan === "premium" ? "ring-1 ring-yellow-400/30" : ""}`}>
-          <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-            <span className="bg-primary text-primary-foreground text-xs font-semibold px-3 py-1 rounded-full">Recomendado</span>
+      {(() => {
+        const cp = PLANS.find(p => p.id === currentPlan) ?? PLANS[0];
+        return (
+          <div className={`flex items-center gap-3 px-5 py-4 rounded-xl border ${cp.cardClass}`}>
+            <Crown className={`w-5 h-5 shrink-0 ${cp.accent}`} />
+            <div>
+              <p className="font-semibold text-sm">Plan {planLabel(currentPlan)} activo</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {currentPlan === "free"
+                  ? "Canjea una clave para desbloquear más funciones."
+                  : "Tienes acceso a todas las funciones de tu plan."}
+              </p>
+            </div>
           </div>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center justify-between">
-              <span className="flex items-center gap-2">{PLAN_DISPLAY} <Crown className="w-4 h-4 text-yellow-400" /></span>
-              {currentPlan === "premium" && (
-                <span className="text-xs font-normal bg-yellow-400/10 text-yellow-400 px-2 py-0.5 rounded-full border border-yellow-400/20">Activo</span>
+        );
+      })()}
+
+      {/* Plans */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl">
+        {PLANS.map(plan => {
+          const isActive = currentPlan === plan.id;
+          return (
+            <Card
+              key={plan.id}
+              className={`relative ${plan.cardClass} ${isActive ? plan.activeClass : ""}`}
+            >
+              {plan.badge && (
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
+                  <span className="bg-primary text-primary-foreground text-xs font-semibold px-3 py-1 rounded-full">
+                    {plan.badge}
+                  </span>
+                </div>
               )}
-            </CardTitle>
-            <p className="text-3xl font-bold">$9.99 <span className="text-sm font-normal text-muted-foreground">/ mes</span></p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <ul className="space-y-2">
-              {PREMIUM_FEATURES.map(({ icon: Icon, text }) => (
-                <li key={text} className="flex items-center gap-2 text-sm">
-                  <Check className="w-4 h-4 shrink-0 text-primary" />
-                  <Icon className="w-3.5 h-3.5 shrink-0 text-muted-foreground/60" />
-                  {text}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
+              <CardHeader className="pb-3 pt-6">
+                <CardTitle className="text-base flex items-center justify-between">
+                  <span className={`flex items-center gap-2 ${plan.accent}`}>
+                    {plan.name}
+                    {plan.id === "blockerx" && <Crown className="w-4 h-4 text-yellow-400" />}
+                  </span>
+                  {isActive && (
+                    <span className={`text-xs font-normal px-2 py-0.5 rounded-full ${plan.badgeClass}`}>
+                      Activo
+                    </span>
+                  )}
+                </CardTitle>
+                <p className="text-3xl font-bold">
+                  {plan.price}{" "}
+                  <span className="text-sm font-normal text-muted-foreground">/ {plan.period}</span>
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <ul className="space-y-2">
+                  {plan.features.map(({ icon: Icon, text }) => (
+                    <li key={text} className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Check className={`w-4 h-4 shrink-0 ${plan.accent}`} />
+                      <Icon className="w-3.5 h-3.5 shrink-0 text-muted-foreground/60" />
+                      {text}
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       {/* Redeem Key */}
@@ -144,19 +200,19 @@ export default function BillingPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <Key className="w-4 h-4 text-primary" />
-            Canjear clave {PLAN_DISPLAY}
+            Canjear clave de acceso
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {currentPlan === "premium" ? (
+          {currentPlan === "blockerx" ? (
             <div className="flex items-center gap-2 text-sm text-yellow-400 bg-yellow-400/5 border border-yellow-400/20 rounded-lg px-4 py-3">
               <Crown className="w-4 h-4 shrink-0" />
-              Ya tienes {PLAN_DISPLAY} activo. ¡Disfruta todas las funciones!
+              Ya tienes el plan Blocker X activo. ¡Disfruta todas las funciones!
             </div>
           ) : (
             <>
               <p className="text-sm text-muted-foreground">
-                ¿Tienes una clave {PLAN_DISPLAY}? Ingrésala aquí para activar tu cuenta al instante.
+                ¿Tienes una clave de acceso? Ingrésala aquí para actualizar tu plan al instante.
               </p>
               <div className="flex gap-2">
                 <Input

@@ -42,7 +42,7 @@ router.post("/invite/redeem", requireAuth, async (req, res): Promise<void> => {
   const isPremium = !!(invite as any).grantsPremium;
 
   // If user already has access AND the key doesn't grant premium OR they already have premium — skip
-  if (user.hasInvite && (!isPremium || (user as any).plan === "premium")) {
+  if (user.hasInvite && (!isPremium || (user as any).plan === "blockerx")) {
     res.json({ message: "Ya tienes acceso completo.", grantsPremium: false });
     return;
   }
@@ -62,14 +62,14 @@ router.post("/invite/redeem", requireAuth, async (req, res): Promise<void> => {
   await db.insert(redeemedCodesTable).values({ id: randomUUID(), codeId: invite.id, userId: user.id });
 
   const updates: Record<string, any> = { hasInvite: true };
-  if (isPremium) updates.plan = "premium";
+  if (isPremium) updates.plan = "blockerx";
   await db.update(usersTable).set(updates).where(eq(usersTable.id, user.id));
 
   await createNotification({
     userId: user.id,
     title: isPremium ? "¡Premium activado! 🎉" : "Acceso concedido",
     message: isPremium
-      ? "Tu clave premium fue aceptada. Disfruta bots ilimitados, IA sin límites y más."
+      ? "Tu clave fue aceptada. Disfruta bots ilimitados, IA sin límites y más."
       : "Tu código de invitación fue aceptado. ¡Bienvenido a Blocker X!",
     type: "success",
   });
@@ -77,7 +77,7 @@ router.post("/invite/redeem", requireAuth, async (req, res): Promise<void> => {
   req.log.info({ userId: user.id, code: normalizedCode, isPremium }, "Invite code redeemed");
   res.json({
     message: isPremium
-      ? "¡Clave premium aceptada! Tu cuenta fue actualizada."
+      ? "¡Clave aceptada! Tu cuenta fue actualizada a Blocker X."
       : "Código aceptado. ¡Bienvenido a Blocker X!",
     grantsPremium: isPremium,
   });

@@ -43,8 +43,12 @@ export default function ProfilePage() {
               <div>
                 <div className="flex items-center gap-3">
                   <p className="text-xl font-bold" data-testid="text-username">{user?.username}</p>
-                  <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${user?.plan === "premium" ? "bg-amber-500/15 text-amber-400 border-amber-500/20" : "bg-gray-500/15 text-gray-400 border-gray-500/20"}`}>
-                    {user?.plan === "premium" ? "Blocker Plus X" : "Free"}
+                  <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${
+                    user?.plan === "blockerx" ? "bg-amber-500/15 text-amber-400 border-amber-500/20" :
+                    user?.plan === "plus" ? "bg-blue-500/15 text-blue-400 border-blue-500/20" :
+                    "bg-gray-500/15 text-gray-400 border-gray-500/20"
+                  }`}>
+                    {user?.plan === "blockerx" ? "Blocker X" : user?.plan === "plus" ? "Plus" : "Free"}
                   </span>
                   {user?.isAdmin && <span className="text-xs px-2 py-0.5 rounded-full border bg-purple-500/15 text-purple-400 border-purple-500/20">Admin</span>}
                 </div>

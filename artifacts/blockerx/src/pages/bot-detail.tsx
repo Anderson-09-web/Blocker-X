@@ -231,7 +231,7 @@ export default function BotDetailPage() {
 
   const botDeployments = (deployments as any[])?.filter((d: any) => d.botId === botId) || [];
 
-  const canShare = (currentUser as any)?.plan === "premium" || (currentUser as any)?.isAdmin;
+  const canShare = true;
 
   const fetchShares = async () => {
     setSharesLoading(true);

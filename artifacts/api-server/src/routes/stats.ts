@@ -43,7 +43,7 @@ router.get("/stats/dashboard", requireAuth, requireInvite, async (req, res): Pro
 router.get("/stats/storage", requireAuth, requireInvite, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const bots = await db.select().from(botsTable).where(eq(botsTable.userId, user.id));
-  const storageLimit = user.plan === "premium" ? 5 * 1024 * 1024 * 1024 : 512 * 1024 * 1024;
+  const storageLimit = user.plan === "blockerx" ? 5 * 1024 * 1024 * 1024 : user.plan === "plus" ? 2 * 1024 * 1024 * 1024 : 512 * 1024 * 1024;
 
   let totalUsed = 0;
   const botStorage = await Promise.all(bots.map(async (bot) => {

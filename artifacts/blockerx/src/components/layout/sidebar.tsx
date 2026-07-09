@@ -171,7 +171,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
           <div className="flex flex-col leading-none">
             <span className="font-bold text-sm tracking-[0.08em] text-foreground">BX PLATFORM</span>
             <span className="text-[9px] font-medium text-primary/70 tracking-[0.2em] uppercase mt-0.5">
-              {user?.plan === "premium" ? "● Premium" : "● Free"}
+              {user?.plan === "blockerx" ? "● Blocker X" : user?.plan === "plus" ? "● Plus" : "● Free"}
             </span>
           </div>
         </motion.div>
@@ -214,7 +214,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
             <p className="text-xs font-semibold truncate text-foreground">{user?.username}</p>
             <p className="text-[10px] text-muted-foreground flex items-center gap-1">
               <Zap className="w-2.5 h-2.5 text-primary" />
-              {user?.plan === "premium" ? "BX Plus" : "Free Plan"}
+              {user?.plan === "blockerx" ? "Blocker X" : user?.plan === "plus" ? "Plus" : "Free Plan"}
             </p>
           </div>
         </div>

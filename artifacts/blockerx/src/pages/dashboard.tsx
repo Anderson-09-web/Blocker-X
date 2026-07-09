@@ -14,13 +14,13 @@ function StatCard({ title, value, rawValue, icon: Icon, description, delay = 0 }
   description: string;
   delay?: number;
 }) {
-  const animated = useCountUp(rawValue, 1200);
+  const animated = useCountUp(rawValue, 800);
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ delay: delay * 0.3, duration: 0.2 }}
     >
       <Card className="relative overflow-hidden border-border/60 bg-card/60 backdrop-blur-sm bx-card-glow bx-stat-bar">
         {/* Diagonal line accent */}

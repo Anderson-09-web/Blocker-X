@@ -16,7 +16,7 @@ function formatUser(u: any) {
 
 router.get("/admin/stats", requireAuth, requireAdmin, async (req, res): Promise<void> => {
   const [totalUsersRes] = await db.select({ count: count() }).from(usersTable);
-  const premiumUsers = await db.select().from(usersTable).where(eq(usersTable.plan, "premium"));
+  const premiumUsers = await db.select().from(usersTable).where(or(eq(usersTable.plan, "plus"), eq(usersTable.plan, "blockerx")));
   const bannedUsers = await db.select().from(usersTable).where(eq(usersTable.isBanned, true));
   const [totalBotsRes] = await db.select({ count: count() }).from(botsTable);
   const runningBots = await db.select().from(botsTable).where(eq(botsTable.status, "running"));
@@ -72,9 +72,10 @@ router.delete("/admin/users/:userId/delete", requireAuth, requireAdmin, async (r
 
 router.patch("/admin/users/:userId/upgrade", requireAuth, requireAdmin, async (req, res): Promise<void> => {
   const userId = Array.isArray(req.params.userId) ? req.params.userId[0] : req.params.userId;
-  await db.update(usersTable).set({ plan: "premium" }).where(eq(usersTable.id, userId));
+  const plan = ["free", "plus", "blockerx"].includes((req.body as any)?.plan) ? (req.body as any).plan : "blockerx";
+  await db.update(usersTable).set({ plan }).where(eq(usersTable.id, userId));
   await db.insert(auditLogsTable).values({ id: randomUUID(), userId: (req as any).user.id, action: "upgrade_user", target: userId });
-  res.json({ message: "User upgraded to premium" });
+  res.json({ message: `User upgraded to ${plan}` });
 });
 
 router.patch("/admin/users/:userId/downgrade", requireAuth, requireAdmin, async (req, res): Promise<void> => {

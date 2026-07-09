@@ -422,10 +422,6 @@ router.get("/bots/:botId/shares", requireAuth, requireInvite, async (req, res): 
 router.post("/bots/:botId/share", requireAuth, requireInvite, async (req, res): Promise<void> => {
   const user = (req as any).user;
   const botId = getBotId(req);
-  if (user.plan !== "premium" && !user.isAdmin) {
-    res.status(403).json({ error: "Sharing is a Premium feature. Upgrade to share your projects." });
-    return;
-  }
   const [bot] = await db.select().from(botsTable).where(and(eq(botsTable.id, botId), eq(botsTable.userId, user.id)));
   if (!bot) { res.status(404).json({ error: "Bot not found" }); return; }
   const { discordId } = req.body;
