@@ -162,6 +162,17 @@ router.post("/bots", requireAuth, requireInvite, async (req, res): Promise<void>
     return;
   }
 
+  // Enforce bot limits per plan
+  const botLimit = user.plan === "blockerx" ? null : user.plan === "plus" ? 5 : 2;
+  if (botLimit !== null) {
+    const existing = await db.select().from(botsTable).where(eq(botsTable.userId, user.id));
+    if (existing.length >= botLimit) {
+      const planName = user.plan === "plus" ? "Plus" : "Free";
+      res.status(403).json({ error: `Has alcanzado el límite de ${botLimit} bots del plan ${planName}. Actualiza tu plan para crear más.` });
+      return;
+    }
+  }
+
   const botId = randomUUID();
   const r2Prefix = `users/${user.discordId}/bots/${botId}`;
   const mainFile = language === "python" ? "main.py" : "index.js";

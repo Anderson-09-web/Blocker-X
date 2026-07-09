@@ -40,9 +40,15 @@ router.post("/invite/redeem", requireAuth, async (req, res): Promise<void> => {
   }
 
   const isPremium = !!(invite as any).grantsPremium;
+  const grantsPlan: string | null = (invite as any).grantsPlan ?? null;
 
-  // If user already has access AND the key doesn't grant premium OR they already have premium — skip
-  if (user.hasInvite && (!isPremium || (user as any).plan === "blockerx")) {
+  // If user already has access AND the key doesn't grant a better plan
+  const planRank: Record<string, number> = { free: 0, plus: 1, blockerx: 2 };
+  const currentRank = planRank[(user as any).plan ?? "free"] ?? 0;
+  // Legacy premium invites (grantsPlan=null, grantsPremium=true) default to blockerx rank
+  const effectivePlan = grantsPlan ?? (isPremium ? "blockerx" : "free");
+  const grantedRank = planRank[effectivePlan] ?? 0;
+  if (user.hasInvite && (!isPremium || currentRank >= grantedRank)) {
     res.json({ message: "Ya tienes acceso completo.", grantsPremium: false });
     return;
   }
@@ -62,14 +68,15 @@ router.post("/invite/redeem", requireAuth, async (req, res): Promise<void> => {
   await db.insert(redeemedCodesTable).values({ id: randomUUID(), codeId: invite.id, userId: user.id });
 
   const updates: Record<string, any> = { hasInvite: true };
-  if (isPremium) updates.plan = "blockerx";
+  if (isPremium && grantsPlan) updates.plan = grantsPlan;
+  else if (isPremium) updates.plan = "blockerx";
   await db.update(usersTable).set(updates).where(eq(usersTable.id, user.id));
 
   await createNotification({
     userId: user.id,
     title: isPremium ? "¡Premium activado! 🎉" : "Acceso concedido",
     message: isPremium
-      ? "Tu clave fue aceptada. Disfruta bots ilimitados, IA sin límites y más."
+      ? `Tu clave fue aceptada. Ahora tienes el plan ${grantsPlan === "plus" ? "Plus" : "Blocker X"}.`
       : "Tu código de invitación fue aceptado. ¡Bienvenido a Blocker X!",
     type: "success",
   });
@@ -77,7 +84,7 @@ router.post("/invite/redeem", requireAuth, async (req, res): Promise<void> => {
   req.log.info({ userId: user.id, code: normalizedCode, isPremium }, "Invite code redeemed");
   res.json({
     message: isPremium
-      ? "¡Clave aceptada! Tu cuenta fue actualizada a Blocker X."
+      ? `¡Clave aceptada! Tu cuenta fue actualizada a ${grantsPlan === "plus" ? "Plus" : "Blocker X"}.`
       : "Código aceptado. ¡Bienvenido a Blocker X!",
     grantsPremium: isPremium,
   });

@@ -3,7 +3,7 @@ import { useGetProfile } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Check, Crown, Key, Zap, Bot, Brain, Share2, Clock, Shield } from "lucide-react";
+import { Check, Crown, Key, Zap, Bot, Brain, Share2, Clock, Shield, Webhook, Code2, Globe, Star, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -29,9 +29,10 @@ const PLANS: {
     features: [
       { icon: Bot, text: "Hasta 2 bots" },
       { icon: Zap, text: "512 MB de almacenamiento" },
-      { icon: Brain, text: "10 solicitudes IA / mes" },
+      { icon: Brain, text: "10 consultas IA / mes" },
       { icon: Clock, text: "Auto-pausa tras 48 h" },
       { icon: Share2, text: "Compartir proyectos" },
+      { icon: Globe, text: "Python & JavaScript" },
     ],
     accent: "text-muted-foreground",
     cardClass: "bg-card/60 border-border/40",
@@ -41,14 +42,17 @@ const PLANS: {
   {
     id: "plus",
     name: "Plus",
-    price: "2.99€",
+    price: "0.70€",
     period: "mes",
     features: [
       { icon: Bot, text: "Hasta 5 bots" },
       { icon: Zap, text: "2 GB de almacenamiento" },
-      { icon: Brain, text: "50 solicitudes IA / mes" },
+      { icon: Brain, text: "50 consultas IA / mes" },
       { icon: Clock, text: "Sin auto-pausa" },
       { icon: Share2, text: "Compartir proyectos" },
+      { icon: Webhook, text: "Webhooks avanzados" },
+      { icon: RefreshCw, text: "Reinicios automáticos" },
+      { icon: Globe, text: "Python & JavaScript" },
     ],
     accent: "text-blue-400",
     cardClass: "bg-blue-500/5 border-blue-500/30",
@@ -58,17 +62,21 @@ const PLANS: {
   {
     id: "blockerx",
     name: "Blocker X",
-    price: "5.99€",
+    price: "1.99€",
     period: "mes",
     badge: "Recomendado",
     features: [
       { icon: Bot, text: "Bots ilimitados" },
       { icon: Zap, text: "5 GB de almacenamiento" },
       { icon: Brain, text: "IA sin límites" },
-      { icon: Clock, text: "Sin auto-pausa" },
+      { icon: Clock, text: "Sin auto-pausa nunca" },
       { icon: Share2, text: "Compartir proyectos" },
+      { icon: Webhook, text: "Webhooks ilimitados" },
+      { icon: RefreshCw, text: "Reinicios automáticos" },
+      { icon: Code2, text: "Python & JavaScript" },
+      { icon: Star, text: "Acceso anticipado a novedades" },
       { icon: Shield, text: "Soporte prioritario" },
-      { icon: Crown, text: "Acceso a novedades beta" },
+      { icon: Crown, text: "Badge exclusivo de Blocker X" },
     ],
     accent: "text-yellow-400",
     cardClass: "bg-primary/5 border-primary/40",
@@ -78,8 +86,7 @@ const PLANS: {
 ];
 
 function planLabel(plan: Plan) {
-  const map: Record<Plan, string> = { free: "Free", plus: "Plus", blockerx: "Blocker X" };
-  return map[plan] ?? plan;
+  return { free: "Free", plus: "Plus", blockerx: "Blocker X" }[plan] ?? plan;
 }
 
 export default function BillingPage() {
@@ -139,7 +146,7 @@ export default function BillingPage() {
               <p className="text-xs text-muted-foreground mt-0.5">
                 {currentPlan === "free"
                   ? "Canjea una clave para desbloquear más funciones."
-                  : "Tienes acceso a todas las funciones de tu plan."}
+                  : "Tienes acceso completo a las funciones de tu plan."}
               </p>
             </div>
           </div>
@@ -147,7 +154,7 @@ export default function BillingPage() {
       })()}
 
       {/* Plans */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl">
         {PLANS.map(plan => {
           const isActive = currentPlan === plan.id;
           return (
@@ -212,7 +219,7 @@ export default function BillingPage() {
           ) : (
             <>
               <p className="text-sm text-muted-foreground">
-                ¿Tienes una clave de acceso? Ingrésala aquí para actualizar tu plan al instante.
+                ¿Tienes una clave? Ingrésala aquí para actualizar tu plan al instante.
               </p>
               <div className="flex gap-2">
                 <Input

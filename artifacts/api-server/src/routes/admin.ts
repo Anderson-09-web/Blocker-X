@@ -91,28 +91,31 @@ router.get("/admin/invites", requireAuth, requireAdmin, async (req, res): Promis
   res.json(filtered.map(c => ({
     id: c.id, code: c.code, maxUses: c.maxUses, usesCount: c.usesCount,
     expiresAt: c.expiresAt?.toISOString() || null, isActive: c.isActive,
-    grantsPremium: c.grantsPremium,
+    grantsPremium: c.grantsPremium, grantsPlan: (c as any).grantsPlan ?? null,
     createdBy: c.createdBy, createdAt: c.createdAt.toISOString(),
   })));
 });
 
 router.post("/admin/invites", requireAuth, requireAdmin, async (req, res): Promise<void> => {
   const user = (req as any).user;
-  const { maxUses, expiresAt, customCode, grantsPremium } = req.body;
+  const { maxUses, expiresAt, customCode, grantsPremium, grantsPlan } = req.body;
+  const validPlans = ["plus", "blockerx"];
+  const resolvedPlan: string | null = validPlans.includes(grantsPlan) ? grantsPlan : null;
+  const resolvedGrantsPremium = !!resolvedPlan || !!grantsPremium;
   const code = (customCode?.toString().trim().toUpperCase()) || Math.random().toString(36).substring(2, 10).toUpperCase();
   try {
     const [invite] = await db.insert(inviteCodesTable).values({
       id: randomUUID(), code, maxUses: maxUses ? Number(maxUses) : null,
       expiresAt: expiresAt ? new Date(expiresAt) : null,
-      isActive: true, grantsPremium: !!grantsPremium, createdBy: user.id,
-    }).returning();
+      isActive: true, grantsPremium: resolvedGrantsPremium, grantsPlan: resolvedPlan, createdBy: user.id,
+    } as any).returning();
     try {
-      await db.insert(auditLogsTable).values({ id: randomUUID(), userId: user.id, action: grantsPremium ? "create_premium_key" : "create_invite", target: code });
+      await db.insert(auditLogsTable).values({ id: randomUUID(), userId: user.id, action: resolvedGrantsPremium ? "create_premium_key" : "create_invite", target: code });
     } catch (_) { /* non-critical */ }
     res.status(201).json({
       id: invite.id, code: invite.code, maxUses: invite.maxUses, usesCount: invite.usesCount,
       expiresAt: invite.expiresAt?.toISOString() || null, isActive: invite.isActive,
-      grantsPremium: invite.grantsPremium,
+      grantsPremium: invite.grantsPremium, grantsPlan: (invite as any).grantsPlan ?? null,
       createdBy: invite.createdBy, createdAt: invite.createdAt.toISOString(),
     });
   } catch (err: any) {
