@@ -41,6 +41,25 @@ async function runStartupMigrations() {
         ADD COLUMN IF NOT EXISTS grants_premium BOOLEAN NOT NULL DEFAULT FALSE
     `);
 
+    // Session table for connect-pg-simple
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pg_sessions (
+        sid  VARCHAR NOT NULL COLLATE "default",
+        sess JSON NOT NULL,
+        expire TIMESTAMP(6) NOT NULL,
+        CONSTRAINT pg_sessions_pkey PRIMARY KEY (sid) NOT DEFERRABLE INITIALLY IMMEDIATE
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_pg_sessions_expire" ON pg_sessions (expire)
+    `);
+
+    // grants_plan column for invite codes (3-tier plan system)
+    await client.query(`
+      ALTER TABLE invitation_codes
+        ADD COLUMN IF NOT EXISTS grants_plan TEXT
+    `);
+
     logger.info("Startup migrations applied");
   } finally {
     client.release();

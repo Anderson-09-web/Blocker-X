@@ -158,16 +158,21 @@ router.post("/admin/broadcast", requireAuth, requireAdmin, async (req, res): Pro
   await db.insert(auditLogsTable).values({ id: randomUUID(), userId: user.id, action: "broadcast", details: title });
   // Send Discord DMs in background — don't block the response
   res.json({ message: `Announcement sent to ${allUsers.length} users` });
-  // Fire DMs after responding
+  // Fire DMs after responding — allSettled so one failure never aborts the rest
   (async () => {
     const { sendDiscordDm } = await import("../lib/notifications");
     const chunks: typeof allUsers[] = [];
     for (let i = 0; i < allUsers.length; i += 5) chunks.push(allUsers.slice(i, i + 5));
+    let sent = 0, failed = 0;
     for (const chunk of chunks) {
-      await Promise.all(chunk.map(u => sendDiscordDm(u.discordId, { title, message, type: type as any })));
+      const results = await Promise.allSettled(
+        chunk.map(u => sendDiscordDm(u.discordId, { title, message, type: type as any }))
+      );
+      for (const r of results) r.status === "fulfilled" ? sent++ : failed++;
       await new Promise(r => setTimeout(r, 300)); // throttle: 5 DMs per 300ms
     }
-  })().catch(() => {});
+    if (failed > 0) console.warn(`[broadcast] DM results: ${sent} sent, ${failed} failed`);
+  })().catch(err => console.error("[broadcast] DM loop crashed:", err));
 });
 
 router.get("/admin/deployments", requireAuth, requireAdmin, async (req, res): Promise<void> => {
