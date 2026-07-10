@@ -41,17 +41,18 @@ async function runStartupMigrations() {
         ADD COLUMN IF NOT EXISTS grants_premium BOOLEAN NOT NULL DEFAULT FALSE
     `);
 
-    // Session table for connect-pg-simple
+    // Session table for connect-pg-simple — use public. prefix so it lands in
+    // the right schema regardless of the connection's default search_path.
     await client.query(`
-      CREATE TABLE IF NOT EXISTS pg_sessions (
-        sid  VARCHAR NOT NULL COLLATE "default",
+      CREATE TABLE IF NOT EXISTS public.pg_sessions (
+        sid  VARCHAR NOT NULL,
         sess JSON NOT NULL,
         expire TIMESTAMP(6) NOT NULL,
         CONSTRAINT pg_sessions_pkey PRIMARY KEY (sid) NOT DEFERRABLE INITIALLY IMMEDIATE
       )
     `);
     await client.query(`
-      CREATE INDEX IF NOT EXISTS "IDX_pg_sessions_expire" ON pg_sessions (expire)
+      CREATE INDEX IF NOT EXISTS "IDX_pg_sessions_expire" ON public.pg_sessions (expire)
     `);
 
     // grants_plan column for invite codes (3-tier plan system)

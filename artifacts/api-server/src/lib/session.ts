@@ -11,7 +11,8 @@ export function createSessionMiddleware() {
     store: new PgSession({
       pool,
       tableName: "pg_sessions",
-      createTableIfMissing: true,
+      schemaName: "public",
+      createTableIfMissing: false, // created in runStartupMigrations on startup
     }),
     secret: process.env.SESSION_SECRET ?? (() => { throw new Error("SESSION_SECRET environment variable is required"); })(),
     resave: false,
