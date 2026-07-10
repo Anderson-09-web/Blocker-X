@@ -11,7 +11,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { Plus, Play, Square, RotateCcw, Trash2, ExternalLink, TerminalSquare, CheckCircle, ChevronRight, Code2, Cpu, RefreshCw, Users } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
 
 function statusBadge(status: string) {
   const map: Record<string, string> = {
@@ -143,9 +142,9 @@ function CreateBotWizard({ onClose, onCreated }: { onClose: () => void; onCreate
         </DialogTitle>
       </DialogHeader>
 
-      <AnimatePresence initial={false}>
+      <>
         {step === 1 && (
-          <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20, position: "absolute" }} className="space-y-3 mt-2">
+          <div className="space-y-3 mt-2">
             <p className="text-sm text-muted-foreground">Selecciona el lenguaje de programación para tu bot.</p>
             <div className="grid grid-cols-2 gap-3">
               <button
@@ -167,11 +166,11 @@ function CreateBotWizard({ onClose, onCreated }: { onClose: () => void; onCreate
                 <div className="text-xs text-muted-foreground">dotenv included</div>
               </button>
             </div>
-          </motion.div>
+          </div>
         )}
 
         {step === 2 && (
-          <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4 mt-2">
+          <div className="space-y-4 mt-2">
             <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 px-3 py-2 rounded-lg">
               {language === "python" ? <Cpu className="w-4 h-4 text-blue-400" /> : <Code2 className="w-4 h-4 text-yellow-400" />}
               {language === "python" ? "Python (discord.py)" : "JavaScript (discord.js)"}
@@ -275,11 +274,11 @@ function CreateBotWizard({ onClose, onCreated }: { onClose: () => void; onCreate
                 {createBot.isPending ? "Creando..." : "Crear Bot"}
               </Button>
             </div>
-          </motion.div>
+          </div>
         )}
 
         {step === 3 && (
-          <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4 mt-2">
+          <div className="space-y-4 mt-2">
             <div className="flex flex-col items-center gap-2 py-3">
               {botInfo?.avatar ? (
                 <img src={botInfo.avatar} alt="Bot" className="w-16 h-16 rounded-full border-2 border-primary/30" />
@@ -298,9 +297,9 @@ function CreateBotWizard({ onClose, onCreated }: { onClose: () => void; onCreate
               ))}
             </div>
             <Button onClick={onClose} className="w-full">Ir a Mis Bots</Button>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
+      </>
     </DialogContent>
   );
 }

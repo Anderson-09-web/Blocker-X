@@ -1,13 +1,11 @@
 import React from "react";
 import { Link, useLocation } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth-context";
 import { useLogout, getGetMeQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { 
-  LayoutDashboard, 
-  TerminalSquare, 
-  Rocket, 
+import {
+  LayoutDashboard,
+  TerminalSquare,
   HardDrive,
   Settings,
   CreditCard,
@@ -24,6 +22,8 @@ import {
   Webhook,
   BookOpen,
   Zap,
+  Megaphone,
+  Rocket,
 } from "lucide-react";
 import bxLogo from "@/assets/bx-logo.png";
 
@@ -35,8 +35,8 @@ interface NavItem {
 
 const mainNav: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { title: "My Bots", href: "/bots", icon: TerminalSquare },
-  { title: "Deployments", href: "/deployments", icon: Rocket },
+  { title: "Mis Bots", href: "/bots", icon: TerminalSquare },
+  { title: "Anuncios", href: "/announcements", icon: Megaphone },
   { title: "Storage", href: "/storage", icon: HardDrive },
 ];
 
@@ -46,17 +46,17 @@ const toolsNav: NavItem[] = [
 ];
 
 const accountNav: NavItem[] = [
-  { title: "Notifications", href: "/notifications", icon: Bell },
+  { title: "Notificaciones", href: "/notifications", icon: Bell },
   { title: "Billing", href: "/billing", icon: CreditCard },
-  { title: "Profile", href: "/profile", icon: User },
-  { title: "Settings", href: "/settings", icon: Settings },
+  { title: "Perfil", href: "/profile", icon: User },
+  { title: "Ajustes", href: "/settings", icon: Settings },
 ];
 
 const adminNav: NavItem[] = [
   { title: "Admin Dashboard", href: "/admin", icon: ShieldAlert },
-  { title: "Users", href: "/admin/users", icon: Users },
+  { title: "Usuarios", href: "/admin/users", icon: Users },
   { title: "Invite Codes", href: "/admin/invites", icon: KeyRound },
-  { title: "All Deployments", href: "/admin/deployments", icon: Rocket },
+  { title: "Deployments", href: "/admin/deployments", icon: Rocket },
   { title: "Audit Logs", href: "/admin/logs", icon: FileText },
   { title: "Broadcast", href: "/admin/broadcast", icon: Activity },
   { title: "Documentación", href: "/admin/docs", icon: BookOpen },
@@ -67,13 +67,11 @@ function NavGroup({
   items,
   location,
   onNavigate,
-  groupIndex = 0,
 }: {
   title: string;
   items: NavItem[];
   location: string;
   onNavigate?: () => void;
-  groupIndex?: number;
 }) {
   return (
     <div className="mb-5">
@@ -81,43 +79,28 @@ function NavGroup({
         {title}
       </h4>
       <div className="space-y-0.5">
-        {items.map((item, i) => {
+        {items.map((item) => {
           const isActive = location === item.href || (item.href !== "/dashboard" && location.startsWith(`${item.href}/`));
           return (
-            <motion.div
+            <Link
               key={item.href}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: (groupIndex * items.length + i) * 0.03, duration: 0.2, ease: "easeOut" }}
+              href={item.href}
+              onClick={onNavigate}
+              className={`group relative flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors duration-100 ${
+                isActive
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+              }`}
             >
-              <Link
-                href={item.href}
-                onClick={onNavigate}
-                className={`group relative flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-all duration-150 ${
-                  isActive
-                    ? "bg-primary/10 text-primary bx-nav-active"
-                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-                }`}
-              >
-                {/* Active left bar */}
-                {isActive && (
-                  <motion.div
-                    layoutId="nav-active-bar"
-                    className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-primary rounded-full"
-                    style={{ boxShadow: "0 0 8px rgba(0,213,255,0.8)" }}
-                  />
-                )}
-                <item.icon className={`w-4 h-4 shrink-0 transition-colors duration-150 ${isActive ? "text-primary" : "group-hover:text-foreground"}`} />
-                <span className="flex-1 truncate">{item.title}</span>
-                {isActive && (
-                  <motion.div
-                    layoutId="nav-active-dot"
-                    className="w-1 h-1 rounded-full bg-primary"
-                    style={{ boxShadow: "0 0 6px rgba(0,213,255,1)" }}
-                  />
-                )}
-              </Link>
-            </motion.div>
+              {isActive && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-primary rounded-full" style={{ boxShadow: "0 0 8px rgba(0,213,255,0.8)" }} />
+              )}
+              <item.icon className={`w-4 h-4 shrink-0 transition-colors duration-100 ${isActive ? "text-primary" : "group-hover:text-foreground"}`} />
+              <span className="flex-1 truncate">{item.title}</span>
+              {isActive && (
+                <span className="w-1 h-1 rounded-full bg-primary" style={{ boxShadow: "0 0 6px rgba(0,213,255,1)" }} />
+              )}
+            </Link>
           );
         })}
       </div>
@@ -153,11 +136,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="h-16 flex items-center px-4 border-b border-border/60 shrink-0">
-        <motion.div
-          whileHover={{ scale: 1.03 }}
-          transition={{ type: "spring", stiffness: 350, damping: 22 }}
-          className="flex items-center gap-3"
-        >
+        <div className="flex items-center gap-3">
           <div className="relative">
             <img
               src={bxLogo}
@@ -165,7 +144,6 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
               className="w-9 h-9 object-contain bx-logo-glow"
               style={{ imageRendering: "crisp-edges" }}
             />
-            {/* Subtle cyan ring */}
             <div className="absolute inset-0 rounded-lg ring-1 ring-primary/20 pointer-events-none" />
           </div>
           <div className="flex flex-col leading-none">
@@ -174,26 +152,25 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
               {user?.plan === "blockerx" ? "● Blocker X" : user?.plan === "plus" ? "● Plus" : "● Free"}
             </span>
           </div>
-        </motion.div>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto py-4 px-2">
-        <NavGroup title="Main" items={mainNav} location={location} onNavigate={onNavigate} groupIndex={0} />
-        <NavGroup title="Tools" items={toolsNav} location={location} onNavigate={onNavigate} groupIndex={1} />
-        <NavGroup title="Account" items={accountNav} location={location} onNavigate={onNavigate} groupIndex={2} />
-        {user?.isAdmin && <NavGroup title="Admin" items={adminNav} location={location} onNavigate={onNavigate} groupIndex={3} />}
+        <NavGroup title="Principal" items={mainNav} location={location} onNavigate={onNavigate} />
+        <NavGroup title="Herramientas" items={toolsNav} location={location} onNavigate={onNavigate} />
+        <NavGroup title="Cuenta" items={accountNav} location={location} onNavigate={onNavigate} />
+        {user?.isAdmin && <NavGroup title="Admin" items={adminNav} location={location} onNavigate={onNavigate} />}
 
-        {/* Support link */}
         <div className="mb-4">
           <a
             href="https://discord.gg/cf2pNF7gh8"
             target="_blank"
             rel="noopener noreferrer"
             onClick={onNavigate}
-            className="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-all duration-150 text-muted-foreground hover:text-foreground hover:bg-white/5"
+            className="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors duration-100 text-muted-foreground hover:text-foreground hover:bg-white/5"
           >
             <HeartHandshake className="w-4 h-4 shrink-0 text-primary/60" />
-            Support Server
+            Servidor de Soporte
           </a>
         </div>
       </div>
@@ -221,10 +198,10 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
         <button
           onClick={handleLogout}
           disabled={logoutMutation.isPending}
-          className="flex w-full items-center gap-2.5 px-3 py-1.5 text-xs font-medium rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-500/8 transition-all duration-150 disabled:opacity-50"
+          className="flex w-full items-center gap-2.5 px-3 py-1.5 text-xs font-medium rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-500/8 transition-colors duration-100 disabled:opacity-50"
         >
           <LogOut className="w-3.5 h-3.5" />
-          {logoutMutation.isPending ? "Cerrando..." : "Log out"}
+          {logoutMutation.isPending ? "Cerrando..." : "Cerrar sesión"}
         </button>
       </div>
     </div>

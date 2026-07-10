@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import Sidebar, { SidebarContent } from "./sidebar";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
-import { motion, AnimatePresence } from "framer-motion";
 import { Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import bxLogo from "@/assets/bx-logo.png";
@@ -49,8 +48,6 @@ class PageErrorBoundary extends React.Component<
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [location] = useLocation();
-
   return (
     <div className="flex h-screen bg-background overflow-hidden">
       <Sidebar />
@@ -94,20 +91,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         <main className="flex-1 overflow-y-auto overflow-x-hidden relative z-10">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={location}
-              initial={{ opacity: 0, y: 16, scale: 0.995 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -8, scale: 0.998 }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-              className="p-4 md:p-8 max-w-7xl mx-auto min-h-full"
-            >
-              <PageErrorBoundary>
-                {children}
-              </PageErrorBoundary>
-            </motion.div>
-          </AnimatePresence>
+          <div className="p-4 md:p-8 max-w-7xl mx-auto min-h-full">
+            <PageErrorBoundary>
+              {children}
+            </PageErrorBoundary>
+          </div>
         </main>
       </div>
     </div>

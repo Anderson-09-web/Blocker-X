@@ -10,7 +10,7 @@ import InvitePage from "@/pages/invite";
 import DashboardPage from "@/pages/dashboard";
 import BotsPage from "@/pages/bots";
 import BotDetailPage from "@/pages/bot-detail";
-import DeploymentsPage from "@/pages/deployments";
+import AnnouncementsPage from "@/pages/announcements";
 import StoragePage from "@/pages/storage";
 import AiPage from "@/pages/ai";
 import NotificationsPage from "@/pages/notifications";
@@ -70,7 +70,7 @@ function DashboardRoutes() {
         <Route path="/dashboard"><ProtectedRoute component={DashboardPage} /></Route>
         <Route path="/bots/:botId"><ProtectedRoute component={BotDetailPage} /></Route>
         <Route path="/bots"><ProtectedRoute component={BotsPage} /></Route>
-        <Route path="/deployments"><ProtectedRoute component={DeploymentsPage} /></Route>
+        <Route path="/announcements"><ProtectedRoute component={AnnouncementsPage} /></Route>
         <Route path="/storage"><ProtectedRoute component={StoragePage} /></Route>
         <Route path="/ai"><ProtectedRoute component={AiPage} /></Route>
         <Route path="/notifications"><ProtectedRoute component={NotificationsPage} /></Route>

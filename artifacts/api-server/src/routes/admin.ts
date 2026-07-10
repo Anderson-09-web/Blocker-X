@@ -150,12 +150,24 @@ router.post("/admin/broadcast", requireAuth, requireAdmin, async (req, res): Pro
   const user = (req as any).user;
   const { title, message, type = "announcement" } = req.body;
   if (!title || !message) { res.status(400).json({ error: "Title and message are required" }); return; }
-  const allUsers = await db.select({ id: usersTable.id }).from(usersTable);
+  const allUsers = await db.select({ id: usersTable.id, discordId: usersTable.discordId }).from(usersTable);
+  // Save in-app notifications for everyone
   await Promise.all(allUsers.map(u =>
     db.insert(notificationsTable).values({ id: randomUUID(), userId: u.id, title, message, type, isRead: false })
   ));
   await db.insert(auditLogsTable).values({ id: randomUUID(), userId: user.id, action: "broadcast", details: title });
+  // Send Discord DMs in background — don't block the response
   res.json({ message: `Announcement sent to ${allUsers.length} users` });
+  // Fire DMs after responding
+  (async () => {
+    const { sendDiscordDm } = await import("../lib/notifications");
+    const chunks: typeof allUsers[] = [];
+    for (let i = 0; i < allUsers.length; i += 5) chunks.push(allUsers.slice(i, i + 5));
+    for (const chunk of chunks) {
+      await Promise.all(chunk.map(u => sendDiscordDm(u.discordId, { title, message, type: type as any })));
+      await new Promise(r => setTimeout(r, 300)); // throttle: 5 DMs per 300ms
+    }
+  })().catch(() => {});
 });
 
 router.get("/admin/deployments", requireAuth, requireAdmin, async (req, res): Promise<void> => {

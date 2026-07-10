@@ -25,7 +25,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { BookOpen, Plus, Pencil, Trash2, FolderOpen, Eye } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
 
 async function apiFetch(path: string, options?: RequestInit) {
   const res = await fetch(`/api${path}`, { credentials: "include", ...options });
@@ -225,17 +224,11 @@ export default function AdminDocsPage() {
                 <Badge variant="secondary" className="text-xs">{grouped[cat].length}</Badge>
               </div>
               <div className="grid gap-3">
-                <AnimatePresence>
+                <>
                   {grouped[cat]
                     .sort((a, b) => a.order - b.order)
-                    .map((doc, i) => (
-                      <motion.div
-                        key={doc.id}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -8 }}
-                        transition={{ delay: i * 0.04 }}
-                      >
+                    .map((doc) => (
+                      <div key={doc.id}>
                         <Card className="hover:border-primary/30 transition-colors">
                           <CardContent className="pt-4 pb-4">
                             <div className="flex items-start justify-between gap-4">
@@ -286,9 +279,9 @@ export default function AdminDocsPage() {
                             </div>
                           </CardContent>
                         </Card>
-                      </motion.div>
+                      </div>
                     ))}
-                </AnimatePresence>
+                </>
               </div>
             </div>
           ))}

@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Webhook, Plus, Trash2, TestTube, Copy, Eye, EyeOff, Pencil, Globe, Bot } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
 
 const ALL_EVENTS = [
   { key: "bot_started", label: "Bot Started", color: "bg-green-500/15 text-green-400 border-green-500/30" },
@@ -250,19 +249,12 @@ export default function WebhooksPage() {
           </CardContent>
         </Card>
       ) : (
-        <AnimatePresence>
-          <div className="space-y-3">
-            {hooks.map((hook, i) => {
-              const revealed = revealedSecrets.has(hook.id);
-              return (
-                <motion.div
-                  key={hook.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ delay: i * 0.05 }}
-                >
-                  <Card className={`transition-all duration-200 ${hook.enabled ? "" : "opacity-60"}`}>
+        <div className="space-y-3">
+          {hooks.map((hook) => {
+            const revealed = revealedSecrets.has(hook.id);
+            return (
+              <div key={hook.id}>
+                <Card className={`transition-colors duration-100 ${hook.enabled ? "" : "opacity-60"}`}>
                     <CardContent className="pt-4 pb-4">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1 min-w-0 space-y-2">
@@ -360,11 +352,10 @@ export default function WebhooksPage() {
                       </div>
                     </CardContent>
                   </Card>
-                </motion.div>
-              );
-            })}
-          </div>
-        </AnimatePresence>
+              </div>
+            );
+          })}
+        </div>
       )}
 
       {/* Create/Edit Dialog */}

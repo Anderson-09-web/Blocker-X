@@ -3,7 +3,6 @@ import { useGetDashboardStats } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TerminalSquare, Rocket, HardDrive, Activity, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { motion } from "framer-motion";
 import { useCountUp } from "@/hooks/use-count-up";
 
 function StatCard({ title, value, rawValue, icon: Icon, description, delay = 0 }: {
@@ -17,11 +16,7 @@ function StatCard({ title, value, rawValue, icon: Icon, description, delay = 0 }
   const animated = useCountUp(rawValue, 800);
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ delay: delay * 0.3, duration: 0.2 }}
-    >
+    <div>
       <Card className="relative overflow-hidden border-border/60 bg-card/60 backdrop-blur-sm bx-card-glow bx-stat-bar">
         {/* Diagonal line accent */}
         <div
@@ -47,7 +42,7 @@ function StatCard({ title, value, rawValue, icon: Icon, description, delay = 0 }
           <p className="text-xs text-muted-foreground">{description}</p>
         </CardContent>
       </Card>
-    </motion.div>
+    </div>
   );
 }
 
@@ -80,17 +75,13 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      >
+      <div>
         <div className="flex items-center gap-3 mb-2">
           <div className="w-1 h-7 rounded-full bg-primary" style={{ boxShadow: "0 0 10px rgba(0,213,255,0.8)" }} />
           <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
         </div>
         <p className="text-sm text-muted-foreground ml-4">Overview of your bots and deployments.</p>
-      </motion.div>
+      </div>
 
       {/* Stat cards */}
       {isLoading ? (
@@ -145,11 +136,7 @@ export default function DashboardPage() {
       {/* Bottom cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Recent deployments */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-        >
+        <div>
           <Card className="border-border/60 bg-card/60 backdrop-blur-sm bx-card-glow h-full">
             <CardHeader className="pb-3 pt-5 px-5">
               <div className="flex items-center gap-2">
@@ -170,12 +157,9 @@ export default function DashboardPage() {
                       <p className="text-sm text-muted-foreground">No deployments yet</p>
                     </div>
                   )}
-                  {stats?.recentDeployments?.map((dep: any, i: number) => (
-                    <motion.div
+                  {stats?.recentDeployments?.map((dep: any) => (
+                    <div
                       key={dep.id}
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.3 + i * 0.05 }}
                       className="flex items-center justify-between p-3 rounded-lg bg-background/40 border border-border/40 hover:border-primary/20 transition-colors"
                     >
                       <div>
@@ -185,19 +169,16 @@ export default function DashboardPage() {
                         </p>
                       </div>
                       <StatusBadge status={dep.status} />
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
               )}
             </CardContent>
           </Card>
-        </motion.div>
+        </div>
 
         {/* System logs */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.32, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        <div
         >
           <Card className="border-border/60 bg-card/60 backdrop-blur-sm bx-card-glow h-full">
             <CardHeader className="pb-3 pt-5 px-5">
@@ -219,12 +200,9 @@ export default function DashboardPage() {
                       <p className="text-sm text-muted-foreground font-sans">No recent logs</p>
                     </div>
                   )}
-                  {stats?.recentLogs?.map((log: any, i: number) => (
-                    <motion.div
+                  {stats?.recentLogs?.map((log: any) => (
+                    <div
                       key={log.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 0.35 + i * 0.04 }}
                       className="flex items-start gap-2 py-1.5 px-2 rounded-md hover:bg-background/40 transition-colors group"
                     >
                       <span className="text-muted-foreground/40 shrink-0 group-hover:text-muted-foreground/60 transition-colors tabular-nums">
@@ -238,13 +216,13 @@ export default function DashboardPage() {
                         [{log.level}]
                       </span>
                       <span className="text-foreground/70 break-all">{log.message}</span>
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
               )}
             </CardContent>
           </Card>
-        </motion.div>
+        </div>
       </div>
     </div>
   );
